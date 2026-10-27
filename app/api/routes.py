@@ -1,3 +1,5 @@
+import os
+from pathlib import Path
 from pydantic import BaseModel
 from fastapi import APIRouter, HTTPException, Query
 
@@ -21,15 +23,53 @@ def health():
 def status():
     return {
         "service": "RDRS",
-        "monitoring": "running",
+        "monitoring": "running" if service._running else "stopped",
         "sandbox": str(service.sandbox),
         "mode": "sandbox_only",
     }
 
-
 @router.get("/events")
 def events(limit: int = Query(default=100, ge=1, le=1000)):
     return {"events": service.list_events(limit)}
+
+@router.post("/test-event")
+def create_test_event():
+    # Keep this endpoint disabled in production unless explicitly enabled.
+    if os.getenv("RDRS_ENABLE_TEST_ENDPOINT") != "true":
+        raise HTTPException(
+            status_code=404,
+            detail="Test endpoint is disabled",
+        )
+
+    test_file = (service.sandbox / "rdrs_safe_test.txt").resolve()
+
+    if not test_file.is_relative_to(service.sandbox):
+        raise HTTPException(
+            status_code=400,
+            detail="Test file must stay inside the sandbox",
+        )
+
+    try:
+        test_file.write_text(
+            "Harmless RDRS sandbox test data.",
+            encoding="utf-8",
+        )
+
+        result = service.process_event({
+            "action": "created",
+            "path": str(test_file),
+        })
+
+        return {
+            "message": "Safe sandbox test event recorded",
+            **result,
+        }
+
+    except (OSError, ValueError) as exc:
+        raise HTTPException(
+            status_code=400,
+            detail=str(exc),
+        ) from exc
 
 
 
