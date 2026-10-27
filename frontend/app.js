@@ -6,8 +6,7 @@
 // Frontend JavaScript
 // ============================================================
 
-const API_BASE = "http://127.0.0.1:8000"
-
+const API_BASE = "https://rdrs-5c5r.onrender.com";
 const content = document.getElementById("page-content");
 const toast = document.getElementById("toast");
 
