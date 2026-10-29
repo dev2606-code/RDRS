@@ -80,13 +80,28 @@ class SandboxFileMonitor:
             self.directory.mkdir(parents=True, exist_ok=True)
 
             handler = SandboxEventHandler(self.callback)
+
             self.observer.schedule(
                 handler,
                 str(self.directory),
                 recursive=True,
             )
+
             self.observer.start()
             self._running = True
+
+            # Diagnostic checks
+            time.sleep(1)
+
+            logger.info(
+                "Watchdog observer alive: %s",
+                self.observer.is_alive(),
+            )
+
+            logger.info(
+                "Watchdog monitoring directory: %s",
+                self.directory,
+            )
 
             logger.info(
                 "Sandbox file monitor started: %s",

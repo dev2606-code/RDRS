@@ -51,11 +51,45 @@ class RDRSService:
     def start(self) -> None:
         with self._lock:
             if self._running:
+                logger.info("RDRS monitor is already running")
                 return
+
+            logger.info(
+                "Starting RDRS monitor for sandbox: %s",
+                self.sandbox,
+            )
+
+            try:
+                self.monitor.start()
+                self._running = True
+                logger.info("RDRS monitor started successfully")
+            except Exception:
+                logger.exception("RDRS monitor failed to start")
+                raise
+
             self.monitor.start()
             self._running = True
 
-    def stop(self) -> None:
+    def start(self) -> None:
+        with self._lock:
+            if self._running:
+                logger.info("RDRS monitor is already running")
+                return
+
+            logger.info(
+                "Starting RDRS monitor for sandbox: %s",
+                self.sandbox,
+            )
+
+            try:
+                self.monitor.start()
+                self._running = True
+                logger.info("RDRS monitor started successfully")
+            except Exception:
+                logger.exception("RDRS monitor failed to start")
+                raise
+
+    def stop(self) -> None: 
         with self._lock:
             if not self._running:
                 return
