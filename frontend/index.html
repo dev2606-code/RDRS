@@ -43,12 +43,31 @@
       </section>
 
       <section id="page-content">
-        <div class="stats-grid">
-          <article class="stat-card red"><div class="stat-top"><span>Critical Threats</span><span class="stat-icon">⬡</span></div><div class="stat-number">03</div><div class="stat-foot"><span class="dot red-dot"></span> Demo indicator · not live data</div></article>
-          <article class="stat-card amber"><div class="stat-top"><span>Open Alerts</span><span class="stat-icon">△</span></div><div class="stat-number">12</div><div class="stat-foot"><span class="dot amber-dot"></span> Example alert count</div></article>
-          <article class="stat-card blue"><div class="stat-top"><span>Monitored Folders</span><span class="stat-icon">▣</span></div><div class="stat-number">04</div><div class="stat-foot"><span class="dot blue-dot"></span> Sandbox paths only</div></article>
-          <article class="stat-card green"><div class="stat-top"><span>System Health</span><span class="stat-icon">✓</span></div><div class="stat-number smaller">Ready</div><div class="stat-foot"><span class="dot green-dot"></span> Frontend running locally</div></article>
-        </div>
+      
+<article class="stat-card red">
+  <div class="stat-top"><span>Critical Threats</span><span class="stat-icon">⬡</span></div>
+  <div class="stat-number" id="overview-critical">—</div>
+  <div class="stat-foot"><span class="dot red-dot"></span> Live high-risk events</div>
+</article>
+
+<article class="stat-card amber">
+  <div class="stat-top"><span>Open Alerts</span><span class="stat-icon">△</span></div>
+  <div class="stat-number" id="overview-open-alerts">—</div>
+  <div class="stat-foot"><span class="dot amber-dot"></span> Live open incidents</div>
+</article>
+
+<article class="stat-card blue">
+  <div class="stat-top"><span>Monitored Folders</span><span class="stat-icon">▣</span></div>
+  <div class="stat-number" id="overview-folders">—</div>
+  <div class="stat-foot"><span class="dot blue-dot"></span> Configured sandbox</div>
+</article>
+
+<article class="stat-card green">
+  <div class="stat-top"><span>System Health</span><span class="stat-icon">✓</span></div>
+  <div class="stat-number smaller" id="overview-health">Checking</div>
+  <div class="stat-foot" id="overview-health-note"><span class="dot green-dot"></span> Checking backend status</div>
+</article>
+
 
         <div class="content-grid">
           <article class="panel chart-panel">

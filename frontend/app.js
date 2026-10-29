@@ -296,27 +296,82 @@ function updateNavigation(page) {
 // ============================================================
 
 async function loadOverviewStatus() {
+  const setText = (selector, value) => {
+    const element = document.querySelector(selector);
+    if (element) element.textContent = value;
+  };
+
   try {
-    const [health, status] = await Promise.all([
-      apiRequest("/api/health"),
-      apiRequest("/api/status")
+    const [status, eventsResponse, incidentsResponse] = await Promise.all([
+      apiRequest("/api/status"),
+      apiRequest("/api/events?limit=100"),
+      apiRequest("/api/incidents?limit=100")
     ]);
 
-    console.log("RDRS health:", health);
-    console.log("RDRS status:", status);
+    const events = Array.isArray(eventsResponse)
+      ? eventsResponse
+      : eventsResponse.events || eventsResponse.records || [];
+
+    const incidents = Array.isArray(incidentsResponse)
+      ? incidentsResponse
+      : incidentsResponse.incidents || [];
+
+    // Count high-risk events in the events returned by the API.
+    const highRiskCount = events.filter(event =>
+      Number(event.risk_score ?? 0) >= 20
+    ).length;
+
+    // Count incidents that are not resolved.
+    const openCount = incidents.filter(incident =>
+      !["resolved", "closed"].includes(
+        String(incident.status ?? "").toLowerCase()
+      )
+    ).length;
+
+    setText("#overview-critical", highRiskCount);
+    setText("#overview-open-alerts", openCount);
+
+    // The API exposes one configured sandbox path, not a folder inventory.
+    setText("#overview-folders", status.sandbox ? "1" : "0");
+
+    const monitoringRunning =
+      String(status.monitoring ?? "").toLowerCase() === "running";
+
+    setText(
+      "#overview-health",
+      monitoringRunning ? "Healthy" : "Check"
+    );
+
+    setText(
+      "#overview-health-note",
+      status.sandbox
+        ? `Backend connected · ${status.mode || "mode unknown"}`
+        : "Backend connected · sandbox path unavailable"
+    );
 
     const badge = document.querySelector("#api-status");
-
     if (badge) {
       badge.textContent = "API ONLINE";
       badge.classList.add("online");
       badge.classList.remove("offline");
     }
+
+    console.log("RDRS overview loaded:", {
+      highRiskCount,
+      openCount,
+      sandbox: status.sandbox,
+      monitoring: status.monitoring
+    });
   } catch (error) {
     console.error("Overview status error:", error);
 
-    const badge = document.querySelector("#api-status");
+    setText("#overview-critical", "—");
+    setText("#overview-open-alerts", "—");
+    setText("#overview-folders", "—");
+    setText("#overview-health", "Offline");
+    setText("#overview-health-note", "Backend unavailable");
 
+    const badge = document.querySelector("#api-status");
     if (badge) {
       badge.textContent = "API OFFLINE";
       badge.classList.add("offline");
@@ -324,6 +379,7 @@ async function loadOverviewStatus() {
     }
   }
 }
+
 
 // ============================================================
 // LIVE DETECTION PAGE
