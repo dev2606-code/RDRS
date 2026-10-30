@@ -67,7 +67,7 @@ class SandboxFileMonitor:
     ):
         self.directory = Path(directory).resolve()
         self.callback = callback
-        self.observer = Observer()
+        self.observer = None
         self._lock = Lock()
         self._running = False
 
@@ -80,29 +80,31 @@ class SandboxFileMonitor:
             self.directory.mkdir(parents=True, exist_ok=True)
 
             handler = SandboxEventHandler(self.callback)
+            observer = Observer()
 
-            self.observer.schedule(
+            observer.schedule(
                 handler,
                 str(self.directory),
                 recursive=True,
             )
 
-            self.observer.start()
-            self._running = True
+            try:
+                observer.start()
+            except Exception:
+                observer.stop()
+                raise
 
-            # Diagnostic checks
-            time.sleep(1)
+            self.observer = observer
+            self._running = True
 
             logger.info(
                 "Watchdog observer alive: %s",
-                self.observer.is_alive(),
+                observer.is_alive(),
             )
-
             logger.info(
                 "Watchdog monitoring directory: %s",
                 self.directory,
             )
-
             logger.info(
                 "Sandbox file monitor started: %s",
                 self.directory,
@@ -110,11 +112,18 @@ class SandboxFileMonitor:
 
     def stop(self) -> None:
         with self._lock:
-            if not self._running:
+            if not self._running or self.observer is None:
                 return
 
-            self.observer.stop()
-            self.observer.join(timeout=5)
+            observer = self.observer
+            observer.stop()
+            observer.join(timeout=5)
+
+            if observer.is_alive():
+                logger.error("Watchdog observer did not stop within 5 seconds")
+                return
+
+            self.observer = None
             self._running = False
 
             logger.info("Sandbox file monitor stopped")
