@@ -12,7 +12,7 @@ const toast = document.getElementById("toast");
 
 let toastTimer = null;
 let activePage = "overview";
-
+window.overviewRefreshTimer = null;
 const originalOverview = content ? content.innerHTML : "";
 
 // ============================================================
@@ -81,12 +81,20 @@ function showToast(message) {
 }
 
 async function apiRequest(endpoint, options = {}) {
+  const method = (options.method || "GET").toUpperCase();
+
+  const headers = {
+    ...(options.headers || {})
+  };
+
+  if (method !== "GET" && options.body) {
+    headers["Content-Type"] = "application/json";
+  }
+
   const response = await fetch(`${API_BASE}${endpoint}`, {
     ...options,
-    headers: {
-      "Content-Type": "application/json",
-      ...(options.headers || {})
-    }
+    method,
+    headers
   });
 
   if (!response.ok) {
@@ -95,7 +103,6 @@ async function apiRequest(endpoint, options = {}) {
 
   return response.json();
 }
-
 function formatTimestamp(value) {
   if (!value) return "—";
 
@@ -295,7 +302,7 @@ function updateNavigation(page) {
 // OVERVIEW PAGE
 // ============================================================
 
-async function loadOverviewStatus() {
+async function RecentEvents() {
   const setText = (selector, value) => {
     const element = document.querySelector(selector);
     if (element) element.textContent = value;
@@ -379,8 +386,136 @@ async function loadOverviewStatus() {
     }
   }
 }
+async function loadRecentOverviewEvents() {
+  const tbody = document.querySelector("#overview-events-body");
+  if (!tbody) return;
 
+  try {
+    const response = await apiRequest("/api/events?limit=5");
+    const events = Array.isArray(response)
+      ? response
+      : response.events || response.records || [];
 
+    if (events.length === 0) {
+      tbody.innerHTML =
+        '<tr><td colspan="4">No events found.</td></tr>';
+      return;
+    }
+
+    tbody.innerHTML = events.slice(0, 5).map(event => {
+      const time = formatTimestamp(event.timestamp);
+      const action = event.action ?? event.event_type ?? "File event";
+      const path = event.path ?? "Unknown path";
+      const risk = Number(event.risk_score ?? 0);
+      const severity = String(
+        event.severity ?? getRiskLevel(risk)
+      ).toLowerCase();
+
+      const tagClass = ["critical", "high", "medium", "low"]
+        .includes(severity) ? severity : "low";
+return `
+  <tr
+    class="clickable-event-row"
+    style="cursor: pointer;"
+    title="Click to view event details"
+  >
+          <td>${escapeHTML(String(time))}</td>
+          <td>${escapeHTML(String(action))}</td>
+          <td class="mono">${escapeHTML(String(path))}</td>
+        <td>
+  <span class="tag ${tagClass}">
+    ${escapeHTML(severity.toUpperCase())} · ${risk}
+  </span>
+</td>
+        </tr>
+      `;
+    }).join("");
+    tbody.querySelectorAll(".clickable-event-row").forEach((row, index) => {
+  row.addEventListener("click", () => {
+    showOverviewEventDetails(events[index]);
+  });
+});
+  } catch (error) {
+    console.error("Recent events loading failed:", error);
+    tbody.innerHTML =
+      '<tr><td colspan="4">Unable to load live events.</td></tr>';
+  }
+}
+function showOverviewEventDetails(event) {
+  const existingModal = document.querySelector("#event-details-modal");
+  if (existingModal) existingModal.remove();
+
+  const modal = document.createElement("div");
+  modal.id = "event-details-modal";
+
+  modal.style.cssText = `
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.75);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 9999;
+    padding: 20px;
+  `;
+
+  const details = [
+    ["Event ID", event.id ?? "N/A"],
+    ["File Path", event.path ?? "Unknown"],
+    ["Action", event.action ?? "Unknown"],
+    ["Timestamp", formatTimestamp(event.timestamp)],
+    ["Risk Score", event.risk_score ?? 0],
+    ["Severity", event.severity ?? "Unknown"],
+    ["Detection Reasons", (event.reasons || []).join(", ") || "No reasons recorded"]
+  ];
+
+  const content = document.createElement("div");
+
+  content.style.cssText = `
+    background: #17172b;
+    color: white;
+    padding: 24px;
+    border-radius: 12px;
+    width: 100%;
+    max-width: 550px;
+    max-height: 80vh;
+    overflow-y: auto;
+  `;
+
+  const heading = document.createElement("h2");
+  heading.textContent = "Event Details";
+  content.appendChild(heading);
+
+  details.forEach(([label, value]) => {
+    const item = document.createElement("p");
+    const strong = document.createElement("strong");
+    strong.textContent = `${label}: `;
+    item.appendChild(strong);
+    item.appendChild(document.createTextNode(String(value)));
+    content.appendChild(item);
+  });
+
+  const closeButton = document.createElement("button");
+  closeButton.textContent = "Close";
+  closeButton.style.cssText = `
+    padding: 10px 20px;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    margin-top: 12px;
+  `;
+
+  closeButton.addEventListener("click", () => modal.remove());
+
+  content.appendChild(closeButton);
+  modal.appendChild(content);
+
+  modal.addEventListener("click", (e) => {
+    if (e.target === modal) modal.remove();
+  });
+
+  document.body.appendChild(modal);
+}
 // ============================================================
 // LIVE DETECTION PAGE
 // ============================================================
@@ -696,9 +831,14 @@ function renderPage(page) {
     return;
   }
 
-  activePage = page;
-  updateNavigation(page);
+// Stop any previous overview refresh timer.
+if (window.overviewRefreshTimer !== null) {
+  clearInterval(window.overviewRefreshTimer);
+  window.overviewRefreshTimer = null;
+}
 
+activePage = page;
+updateNavigation(page);
   if (page === "overview") {
     content.innerHTML = originalOverview;
   } else if (page === "detection") {
@@ -774,7 +914,7 @@ function renderPage(page) {
         "Refresh Incidents"
       )}
 <div style="margin: 12px 0;">
-  <button class="btn btn-secondary" id="export-incidents" type="button">
+  <button class="btn btn-secondary" id="export-ssincidents" type="button">
     Export Incidents CSV
   </button>
 </div>
@@ -905,9 +1045,20 @@ function renderPage(page) {
     loadLiveIncidents();
   }
 
-  if (page === "overview") {
-    loadOverviewStatus();
-  }
+if (page === "overview") {
+  RecentEvents();
+  loadRecentOverviewEvents();
+window.overviewRefreshTimer = setInterval(async () => {
+    if (activePage !== "overview") return;
+
+    await Promise.all([
+      RecentEvents(),
+      loadRecentOverviewEvents()
+    ]);
+
+    console.log("RDRS overview automatically refreshed.");
+  }, 10000);
+}
 }
 
 // ============================================================
@@ -1080,9 +1231,11 @@ function bindRefreshButton() {
     } else if (activePage === "incidents") {
       await loadLiveIncidents();
     } else if (activePage === "overview") {
-      await loadOverviewStatus();
-      showToast("Overview refreshed.");
-    } else {
+  await RecentEvents();
+  await loadRecentOverviewEvents();
+  await loadOverviewStatus();
+  showToast("Overview refreshed.");
+}else {
       try {
         await apiRequest("/api/health");
         showToast("RDRS API is online.");

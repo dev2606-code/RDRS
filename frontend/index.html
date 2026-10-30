@@ -1,21 +1,30 @@
+```html
 <!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>RDRS | Defensive Security Platform</title>
+
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="styles.css">
 </head>
+
 <body>
   <div class="app-shell">
+
+    <!-- Sidebar -->
     <aside class="sidebar">
       <a class="brand" href="#" aria-label="RDRS home">
         <span class="brand-mark">⬡</span>
-        <span><strong>RDRS</strong><small>Defensive Security Platform</small></span>
+        <span>
+          <strong>RDRS</strong>
+          <small>Defensive Security Platform</small>
+        </span>
       </a>
+
       <nav class="nav">
         <button class="nav-item active" data-page="overview"><span>⌂</span> Overview</button>
         <button class="nav-item" data-page="detection"><span>◈</span> Ransomware Detection</button>
@@ -25,69 +34,207 @@
         <button class="nav-item" data-page="reports"><span>▧</span> Reports</button>
         <button class="nav-item" data-page="settings"><span>⚙</span> Settings</button>
       </nav>
+
       <div class="sidebar-bottom">
-        <div class="online-box"><span class="pulse"></span><div><strong>Demo Mode</strong><small>UI preview is running</small></div></div>
-        <div class="profile"><div class="avatar">D</div><div><strong>Platform Admin</strong><small>Local demo</small></div></div>
+        <div class="online-box">
+          <span class="pulse"></span>
+          <div>
+            <strong>RDRS Monitor</strong>
+            <small>Defensive sandbox</small>
+          </div>
+        </div>
+
+        <div class="profile">
+          <div class="avatar">D</div>
+          <div>
+            <strong>Platform Admin</strong>
+            <small>RDRS Dashboard</small>
+          </div>
+        </div>
       </div>
     </aside>
 
+    <!-- Main content -->
     <main class="main">
+
+      <!-- Top bar -->
       <header class="topbar">
-        <label class="search"><span>⌕</span><input id="global-search" type="search" placeholder="Search files, indicators, incidents..."></label>
-        <div class="top-actions"><span class="live-pill"><i></i> Demo UI</span><button class="icon-button" id="theme-button" title="Toggle accent">◐</button><div class="top-avatar">D</div></div>
+        <label class="search">
+          <span>⌕</span>
+          <input
+            id="global-search"
+            type="search"
+            placeholder="Search files, indicators, incidents..."
+          >
+        </label>
+
+        <div class="top-actions">
+          <span class="live-pill"><i></i> RDRS</span>
+          <button class="icon-button" id="theme-button" title="Toggle accent">◐</button>
+          <div class="top-avatar">D</div>
+        </div>
       </header>
 
+      <!-- Page heading -->
       <section class="page-head">
-        <div><p class="eyebrow">DEFENSIVE SECURITY / <span id="crumb">OVERVIEW</span></p><h1 id="page-title">Security Overview</h1><p id="page-subtitle">Monitor security signals and system activity from one place.</p></div>
-        <div class="head-right"><span class="date-label">LOCAL PREVIEW</span><button class="primary-button" id="refresh-button">↻ Refresh view</button></div>
+        <div>
+          <p class="eyebrow">
+            DEFENSIVE SECURITY / <span id="crumb">OVERVIEW</span>
+          </p>
+          <h1 id="page-title">Security Overview</h1>
+          <p id="page-subtitle">
+            Monitor security signals and system activity from one place.
+          </p>
+        </div>
+
+        <div class="head-right">
+          <span class="date-label">LIVE DASHBOARD</span>
+          <button class="primary-button" id="refresh-button">↻ Refresh view</button>
+        </div>
       </section>
 
+      <!-- Page content -->
       <section id="page-content">
-      
-<article class="stat-card red">
-  <div class="stat-top"><span>High-risk Events</span><span class="stat-icon">⬡</span></div>
 
-  <div class="stat-number" id="overview-critical">—</div>
-  <div class="stat-foot"><span class="dot red-dot"></span> Live high-risk events</div>
-</article>
+        <!-- Live statistics -->
+        <div class="stats-grid">
 
-<article class="stat-card amber">
-  <div class="stat-top"><span>Open Alerts</span><span class="stat-icon">△</span></div>
-  <div class="stat-number" id="overview-open-alerts">—</div>
-  <div class="stat-foot"><span class="dot amber-dot"></span> Live open incidents</div>
-</article>
-
-<article class="stat-card blue">
-  <div class="stat-top"><span>Monitored Folders</span><span class="stat-icon">▣</span></div>
-  <div class="stat-number" id="overview-folders">—</div>
-  <div class="stat-foot"><span class="dot blue-dot"></span> Configured sandbox</div>
-</article>
-
-<article class="stat-card green">
-  <div class="stat-top"><span>System Health</span><span class="stat-icon">✓</span></div>
-  <div class="stat-number smaller" id="overview-health">Checking</div>
-  <div class="stat-foot" id="overview-health-note"><span class="dot green-dot"></span> Checking backend status</div>
-</article>
-
-
-        <div class="content-grid">
-          <article class="panel chart-panel">
-            <div class="panel-heading"><div><h2>Threat Activity</h2><p>Illustrative activity over the last 24 hours</p></div><span class="panel-badge">SAMPLE</span></div>
-            <div class="chart-legend"><span><i class="legend-dot violet"></i>Threat score</span><span><i class="legend-dot cyan"></i>File events</span><span><i class="legend-dot orange"></i>Alerts</span></div>
-            <div class="chart-wrap"><svg viewBox="0 0 760 235" role="img" aria-label="Illustrative threat activity line chart" class="chart">
-              <defs><linearGradient id="area" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="#8b5cf6" stop-opacity=".25"/><stop offset="1" stop-color="#8b5cf6" stop-opacity="0"/></linearGradient></defs>
-              <g class="grid-lines"><path d="M42 20H742 M42 65H742 M42 110H742 M42 155H742 M42 200H742"/><path d="M42 20V200 M182 20V200 M322 20V200 M462 20V200 M602 20V200 M742 20V200"/></g>
-              <path class="area-fill" d="M42 162 C85 145 100 175 145 142 S220 155 260 120 S330 170 375 135 S440 145 480 78 S540 145 580 122 S650 150 690 95 S720 112 742 84 L742 200 L42 200Z"/>
-              <path class="line-violet" d="M42 162 C85 145 100 175 145 142 S220 155 260 120 S330 170 375 135 S440 145 480 78 S540 145 580 122 S650 150 690 95 S720 112 742 84"/>
-              <path class="line-cyan" d="M42 176 C90 168 100 135 145 175 S220 160 260 168 S330 140 375 166 S440 170 480 143 S540 160 580 151 S650 125 690 150 S720 140 742 130"/>
-              <path class="line-orange" d="M42 188 C90 180 100 190 145 183 S220 175 260 186 S330 176 375 184 S440 180 480 170 S540 182 580 175 S650 180 690 166 S720 176 742 165"/>
-              <g class="axis-labels"><text x="42" y="222">12 AM</text><text x="182" y="222">4 AM</text><text x="322" y="222">8 AM</text><text x="462" y="222">12 PM</text><text x="602" y="222">4 PM</text><text x="742" y="222" text-anchor="end">8 PM</text></g>
-            </svg></div>
+          <article class="stat-card red">
+            <div class="stat-top">
+              <span>High-risk Events</span>
+              <span class="stat-icon">⬡</span>
+            </div>
+            <div class="stat-number" id="overview-critical">—</div>
+            <div class="stat-foot">
+              <span class="dot red-dot"></span>
+              Live high-risk events
+            </div>
           </article>
+
+          <article class="stat-card amber">
+            <div class="stat-top">
+              <span>Open Alerts</span>
+              <span class="stat-icon">△</span>
+            </div>
+            <div class="stat-number" id="overview-open-alerts">—</div>
+            <div class="stat-foot">
+              <span class="dot amber-dot"></span>
+              Live open incidents
+            </div>
+          </article>
+
+          <article class="stat-card blue">
+            <div class="stat-top">
+              <span>Monitored Folders</span>
+              <span class="stat-icon">▣</span>
+            </div>
+            <div class="stat-number" id="overview-folders">—</div>
+            <div class="stat-foot">
+              <span class="dot blue-dot"></span>
+              Configured sandbox
+            </div>
+          </article>
+
+          <article class="stat-card green">
+            <div class="stat-top">
+              <span>System Health</span>
+              <span class="stat-icon">✓</span>
+            </div>
+            <div class="stat-number smaller" id="overview-health">Checking</div>
+            <div class="stat-foot" id="overview-health-note">
+              <span class="dot green-dot"></span>
+              Checking backend status
+            </div>
+          </article>
+
+        </div>
+
+        <!-- Charts -->
+        <div class="content-grid">
+
+          <article class="panel chart-panel">
+            <div class="panel-heading">
+              <div>
+                <h2>Threat Activity</h2>
+                <p>Illustrative activity over the last 24 hours</p>
+              </div>
+              <span class="panel-badge">SAMPLE</span>
+            </div>
+
+            <div class="chart-legend">
+              <span><i class="legend-dot violet"></i>Threat score</span>
+              <span><i class="legend-dot cyan"></i>File events</span>
+              <span><i class="legend-dot orange"></i>Alerts</span>
+            </div>
+
+            <div class="chart-wrap">
+              <svg
+                viewBox="0 0 760 235"
+                role="img"
+                aria-label="Illustrative threat activity line chart"
+                class="chart"
+              >
+                <defs>
+                  <linearGradient id="area" x1="0" x2="0" y1="0" y2="1">
+                    <stop offset="0" stop-color="#8b5cf6" stop-opacity=".25"/>
+                    <stop offset="1" stop-color="#8b5cf6" stop-opacity="0"/>
+                  </linearGradient>
+                </defs>
+
+                <g class="grid-lines">
+                  <path d="M42 20H742 M42 65H742 M42 110H742 M42 155H742 M42 200H742"/>
+                  <path d="M42 20V200 M182 20V200 M322 20V200 M462 20V200 M602 20V200 M742 20V200"/>
+                </g>
+
+                <path
+                  class="area-fill"
+                  d="M42 162 C85 145 100 175 145 142 S220 155 260 120 S330 170 375 135 S440 145 480 78 S540 145 580 122 S650 150 690 95 S720 112 742 84 L742 200 L42 200Z"
+                />
+
+                <path
+                  class="line-violet"
+                  d="M42 162 C85 145 100 175 145 142 S220 155 260 120 S330 170 375 135 S440 145 480 78 S540 145 580 122 S650 150 690 95 S720 112 742 84"
+                />
+
+                <path
+                  class="line-cyan"
+                  d="M42 176 C90 168 100 135 145 175 S220 160 260 168 S330 140 375 166 S440 170 480 143 S540 160 580 151 S650 125 690 150 S720 140 742 130"
+                />
+
+                <path
+                  class="line-orange"
+                  d="M42 188 C90 180 100 190 145 183 S220 175 260 186 S330 176 375 184 S440 180 480 170 S540 182 580 175 S650 180 690 166 S720 176 742 165"
+                />
+
+                <g class="axis-labels">
+                  <text x="42" y="222">12 AM</text>
+                  <text x="182" y="222">4 AM</text>
+                  <text x="322" y="222">8 AM</text>
+                  <text x="462" y="222">12 PM</text>
+                  <text x="602" y="222">4 PM</text>
+                  <text x="742" y="222" text-anchor="end">8 PM</text>
+                </g>
+              </svg>
+            </div>
+          </article>
+
           <article class="panel distribution-panel">
-            <div class="panel-heading"><div><h2>Signal Distribution</h2><p>Example severity breakdown</p></div><span class="mini-menu">•••</span></div>
+            <div class="panel-heading">
+              <div>
+                <h2>Signal Distribution</h2>
+                <p>Example severity breakdown</p>
+              </div>
+              <span class="mini-menu">•••</span>
+            </div>
+
             <div class="distribution">
-              <div class="donut"><div><strong>42</strong><small>Sample signals</small></div></div>
+              <div class="donut">
+                <div>
+                  <strong>42</strong>
+                  <small>Sample signals</small>
+                </div>
+              </div>
+
               <div class="distribution-legend">
                 <div><i class="legend-dot red"></i><span>Critical</span><strong>3</strong></div>
                 <div><i class="legend-dot orange"></i><span>High</span><strong>8</strong></div>
@@ -96,34 +243,135 @@
               </div>
             </div>
           </article>
+
         </div>
 
-        <div class="section-heading"><div><h2>Security Modules</h2><p>Choose a module to explore its interface</p></div></div>
+        <!-- Security modules -->
+        <div class="section-heading">
+          <div>
+            <h2>Security Modules</h2>
+            <p>Choose a module to explore its interface</p>
+          </div>
+        </div>
+
         <div class="module-grid">
-          <button class="module-card" data-page="detection"><span class="module-icon purple">⬡</span><strong>Ransomware Detection</strong><p>Watch sandbox file activity and review entropy signals.</p><span class="module-link">Open module <b>↗</b></span></button>
-          <button class="module-card" data-page="intelligence"><span class="module-icon cyan">⌘</span><strong>Threat Intelligence</strong><p>Manage indicators such as IPs, domains, and file hashes.</p><span class="module-link">Open module <b>↗</b></span></button>
-          <button class="module-card" data-page="incidents"><span class="module-icon pink">▤</span><strong>Incident Management</strong><p>Review sample incidents and investigation status.</p><span class="module-link">Open module <b>↗</b></span></button>
-          <button class="module-card" data-page="tools"><span class="module-icon orange">⚒</span><strong>Security Tools</strong><p>Explore planned defensive checks and authorized tools.</p><span class="module-link">Open module <b>↗</b></span></button>
+          <button class="module-card" data-page="detection">
+            <span class="module-icon purple">⬡</span>
+            <strong>Ransomware Detection</strong>
+            <p>Watch sandbox file activity and review entropy signals.</p>
+            <span class="module-link">Open module <b>↗</b></span>
+          </button>
+
+          <button class="module-card" data-page="intelligence">
+            <span class="module-icon cyan">⌘</span>
+            <strong>Threat Intelligence</strong>
+            <p>Manage indicators such as IPs, domains, and file hashes.</p>
+            <span class="module-link">Open module <b>↗</b></span>
+          </button>
+
+          <button class="module-card" data-page="incidents">
+            <span class="module-icon pink">▤</span>
+            <strong>Incident Management</strong>
+            <p>Review incidents and investigation status.</p>
+            <span class="module-link">Open module <b>↗</b></span>
+          </button>
+
+          <button class="module-card" data-page="tools">
+            <span class="module-icon orange">⚒</span>
+            <strong>Security Tools</strong>
+            <p>Explore defensive checks and authorized tools.</p>
+            <span class="module-link">Open module <b>↗</b></span>
+          </button>
         </div>
 
+        <!-- Recent events and latest alerts -->
         <div class="bottom-grid">
-          <article class="panel table-panel"><div class="panel-heading"><div><h2>Recent File Events</h2><p>Illustrative rows for layout preview</p></div><button class="text-button" data-page="detection">View all ↗</button></div><div class="table-scroll"><table><thead><tr><th>Time</th><th>Event</th><th>Location</th><th>Risk</th></tr></thead><tbody>
-            <tr><td>14:28:10</td><td>Modified</td><td class="mono">data/sandbox/demo.txt</td><td><span class="tag high">High</span></td></tr>
-            <tr><td>14:25:44</td><td>Created</td><td class="mono">data/sandbox/sample.log</td><td><span class="tag low">Low</span></td></tr>
-            <tr><td>14:21:03</td><td>Renamed</td><td class="mono">data/sandbox/test.tmp</td><td><span class="tag medium">Medium</span></td></tr>
-          </tbody></table></div></article>
-          <article class="panel alerts-panel"><div class="panel-heading"><div><h2>Latest Alerts</h2><p>Sample alerts only</p></div><button class="text-button" data-page="incidents">View all ↗</button></div>
-            <div class="alert-row"><span class="alert-symbol critical">!</span><div><strong>Ransomware-like file burst</strong><small>Example detection rule</small></div><span class="tag critical">Critical</span></div>
-            <div class="alert-row"><span class="alert-symbol warning">!</span><div><strong>High entropy file change</strong><small>Example detection rule</small></div><span class="tag medium">Medium</span></div>
-            <div class="alert-row"><span class="alert-symbol info">i</span><div><strong>Monitor started</strong><small>UI preview event</small></div><span class="tag low">Info</span></div>
+
+          <article class="panel table-panel">
+            <div class="panel-heading">
+              <div>
+                <h2>Recent File Events</h2>
+                <p>Events returned by the RDRS backend</p>
+              </div>
+              <button class="text-button" data-page="detection">View all ↗</button>
+            </div>
+
+            <div class="table-scroll">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Time</th>
+                    <th>Event</th>
+                    <th>Location</th>
+                    <th>Risk</th>
+                  </tr>
+                </thead>
+
+                <tbody id="overview-events-body">
+                  <tr>
+                    <td colspan="4">Loading live events...</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
           </article>
+
+          <article class="panel alerts-panel">
+            <div class="panel-heading">
+              <div>
+                <h2>Latest Alerts</h2>
+                <p>Illustrative examples — not live alerts</p>
+              </div>
+              <button class="text-button" data-page="incidents">View all ↗</button>
+            </div>
+
+            <div class="alert-row">
+              <span class="alert-symbol critical">!</span>
+              <div>
+                <strong>Example ransomware-like activity</strong>
+                <small>Illustrative example only</small>
+              </div>
+              <span class="tag critical">Example</span>
+            </div>
+
+            <div class="alert-row">
+              <span class="alert-symbol warning">!</span>
+              <div>
+                <strong>Example high-risk file change</strong>
+                <small>Illustrative example only</small>
+              </div>
+              <span class="tag medium">Example</span>
+            </div>
+
+            <div class="alert-row">
+              <span class="alert-symbol info">i</span>
+              <div>
+                <strong>Monitor status</strong>
+                <small>Check the live System Health card</small>
+              </div>
+              <span class="tag low">Info</span>
+            </div>
+          </article>
+
         </div>
       </section>
 
-      <footer class="footer"><span>RDRS <b>v0.1 UI Preview</b> · Defensive Security — Educational Use Only</span><span><a href="#" data-page="settings">Settings</a><a href="#" id="export-demo">Export demo CSV</a></span></footer>
+      <!-- Footer -->
+      <footer class="footer">
+        <span>
+          RDRS <b>v0.1</b> · Defensive Security — Educational Use Only
+        </span>
+        <span>
+          <a href="#" data-page="settings">Settings</a>
+          <a href="#" id="export-demo">Export demo CSV</a>
+        </span>
+      </footer>
+
     </main>
   </div>
+
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
   <script src="app.js"></script>
 </body>
 </html>
