@@ -253,3 +253,27 @@ def test_multiple_risk_indicators_increase_score(tmp_path):
     assert result["risk_score"] == 70
     assert result["severity"] == "critical"
     assert result["status"] == "needs_review"
+def test_legitimate_compressed_file_remains_low_risk(tmp_path):
+    import gzip
+    import random
+
+    sandbox = tmp_path / "sandbox"
+    sandbox.mkdir()
+
+    sample = sandbox / "backup.gz"
+    content = random.Random(42).randbytes(4096)
+
+    with gzip.open(sample, "wb") as compressed:
+        compressed.write(content)
+
+    engine = DetectionEngine(str(sandbox))
+
+    result = engine.analyze_event({
+        "path": str(sample),
+        "action": "created",
+    })
+
+    assert result["entropy"] >= 7.2
+    assert result["risk_score"] == 15
+    assert result["severity"] == "low"
+    assert result["status"] == "needs_review"
