@@ -277,3 +277,20 @@ def test_legitimate_compressed_file_remains_low_risk(tmp_path):
     assert result["risk_score"] == 15
     assert result["severity"] == "low"
     assert result["status"] == "needs_review"
+
+
+def test_normal_file_move_remains_low_risk(tmp_path):
+    sandbox = tmp_path / "sandbox"
+    sandbox.mkdir()
+
+    sample = sandbox / "normal.txt"
+    engine = DetectionEngine(str(sandbox))
+
+    result = engine.analyze_event({
+        "path": str(sample),
+        "action": "moved",
+    })
+
+    assert result["risk_score"] == 10
+    assert result["severity"] == "low"
+    assert result["status"] == "needs_review"
