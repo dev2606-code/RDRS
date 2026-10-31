@@ -34,7 +34,12 @@ class RDRSService:
         logger.info("Sandbox file event received: %s", event)
 
         try:
-            result = self.engine.analyze_event(event)
+            recent_events = self.database.list_events(limit=50)
+
+            result = self.engine.analyze_event(
+                event,
+                recent_events=recent_events,
+            )
             logger.info("Detection result: %s", result)
 
             event_id = self.database.add_event(result)
@@ -47,6 +52,7 @@ class RDRSService:
         except Exception:
             logger.exception("Failed to process or save sandbox event")
             raise
+
     def start(self) -> None:
         with self._lock:
             if self._running:
@@ -65,6 +71,7 @@ class RDRSService:
             except Exception:
                 logger.exception("RDRS monitor failed to start")
                 raise
+
     def stop(self) -> None:
         with self._lock:
             if not self._running:
