@@ -149,3 +149,22 @@ def test_high_entropy_file_is_flagged_for_review(tmp_path):
     assert result["risk_score"] == 45
     assert result["severity"] == "high"
     assert "High file entropy" in result["reasons"]
+
+
+def test_high_entropy_alone_is_not_confirmed_threat(tmp_path):
+    sandbox = tmp_path / "sandbox"
+    sandbox.mkdir()
+
+    sample = sandbox / "random_data.bin"
+    sample.write_bytes(bytes(range(256)) * 200)
+
+    engine = DetectionEngine(str(sandbox))
+
+    result = engine.analyze_event({
+        "path": str(sample),
+        "action": "created",
+    })
+
+    assert result["entropy"] >= 7.2
+    assert result["status"] == "needs_review"
+    assert "High file entropy" in result["reasons"]
