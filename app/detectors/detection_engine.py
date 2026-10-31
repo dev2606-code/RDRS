@@ -92,7 +92,7 @@ class DetectionEngine:
             entropy = calculate_entropy(str(file_path))
 
             if entropy >= 7.2:
-                score += 40
+                score += 10
                 reasons.append("High file entropy")
 
         if action == "deleted":

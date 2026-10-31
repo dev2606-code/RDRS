@@ -146,8 +146,8 @@ def test_high_entropy_file_is_flagged_for_review(tmp_path):
     })
 
     assert result["entropy"] >= 7.2
-    assert result["risk_score"] == 45
-    assert result["severity"] == "high"
+    assert result["risk_score"] == 15
+    assert result["severity"] == "low"
     assert "High file entropy" in result["reasons"]
 
 
@@ -168,3 +168,88 @@ def test_high_entropy_alone_is_not_confirmed_threat(tmp_path):
     assert result["entropy"] >= 7.2
     assert result["status"] == "needs_review"
     assert "High file entropy" in result["reasons"]
+def test_suspicious_extension_generates_medium_risk(tmp_path):
+    sandbox = tmp_path / "sandbox"
+    sandbox.mkdir()
+
+    sample = sandbox / "sample.locked"
+    sample.write_text("Synthetic RDRS test file.", encoding="utf-8")
+
+    engine = DetectionEngine(str(sandbox))
+
+    result = engine.analyze_event({
+        "path": str(sample),
+        "action": "created",
+    })
+
+    assert result["risk_score"] == 30
+    assert result["severity"] == "medium"
+    assert any(
+        "Suspicious file extension" in reason
+        for reason in result["reasons"]
+    )
+def test_rapid_file_changes_increase_risk(tmp_path):
+    sandbox = tmp_path / "sandbox"
+    sandbox.mkdir()
+
+    sample = sandbox / "current.txt"
+    sample.write_text("Safe test content.", encoding="utf-8")
+
+    engine = DetectionEngine(str(sandbox))
+    now = datetime.now(timezone.utc).isoformat()
+
+    recent_events = [
+        {
+            "path": str(sandbox / f"file_{i}.txt"),
+            "action": "modified",
+            "timestamp": now,
+        }
+        for i in range(5)
+    ]
+
+    result = engine.analyze_event(
+        {
+            "path": str(sample),
+            "action": "modified",
+            "timestamp": now,
+        },
+        recent_events=recent_events,
+    )
+
+    assert result["risk_score"] == 20
+    assert result["severity"] == "medium"
+    assert any(
+        "Elevated file-change activity" in reason
+        for reason in result["reasons"]
+    )
+def test_multiple_risk_indicators_increase_score(tmp_path):
+    sandbox = tmp_path / "sandbox"
+    sandbox.mkdir()
+
+    sample = sandbox / "sample.locked"
+    sample.write_bytes(bytes(range(256)) * 200)
+
+    engine = DetectionEngine(str(sandbox))
+    now = datetime.now(timezone.utc).isoformat()
+
+    recent_events = [
+        {
+            "path": str(sandbox / f"file_{i}.txt"),
+            "action": "modified",
+            "timestamp": now,
+        }
+        for i in range(9)
+    ]
+
+    result = engine.analyze_event(
+        {
+            "path": str(sample),
+            "action": "created",
+            "timestamp": now,
+        },
+        recent_events=recent_events,
+    )
+
+    assert result["risk_score"] == 70
+    assert result["severity"] == "critical"
+    assert result["status"] == "needs_review"
