@@ -31,7 +31,7 @@ class DetectionEngine:
         changed_paths = set()
 
         for item in recent_events:
-            if item.get("action") not in {"created", "modified"}:
+            if item.get("action") != "modified":
                 continue
 
             timestamp = item.get("timestamp")
