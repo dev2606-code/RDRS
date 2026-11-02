@@ -287,3 +287,37 @@ def test_bulk_file_creation_does_not_trigger_rapid_modification_alert(tmp_path):
         "file-change activity" in reason
         for reason in result["reasons"]
     )
+def test_rapid_file_renaming_increases_risk(tmp_path):
+    sandbox = tmp_path / "sandbox"
+    sandbox.mkdir()
+
+    sample = sandbox / "current.txt"
+    sample.write_text("Safe test content.", encoding="utf-8")
+
+    engine = DetectionEngine(str(sandbox))
+    now = datetime.now(timezone.utc).isoformat()
+
+    recent_events = [
+        {
+            "path": str(sandbox / f"renamed_{i}.txt"),
+            "action": "moved",
+            "timestamp": now,
+        }
+        for i in range(5)
+    ]
+
+    result = engine.analyze_event(
+        {
+            "path": str(sample),
+            "action": "moved",
+            "timestamp": now,
+        },
+        recent_events=recent_events,
+    )
+
+    assert result["risk_score"] == 25
+    assert result["severity"] == "medium"
+    assert any(
+        "file-rename activity" in reason
+        for reason in result["reasons"]
+    )
