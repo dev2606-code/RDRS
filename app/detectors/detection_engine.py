@@ -91,7 +91,11 @@ class DetectionEngine:
         if action in {"created", "modified"} and file_path.is_file():
             entropy = calculate_entropy(str(file_path))
 
-            if entropy >= 7.2:
+            is_compressed_file = file_path.suffix.lower() in {
+                ".gz", ".zip", ".rar", ".7z", ".bz2", ".xz"
+            }
+
+            if entropy >= 7.2 and not is_compressed_file:
                 score += 10
                 reasons.append("High file entropy")
 
