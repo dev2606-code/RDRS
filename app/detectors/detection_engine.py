@@ -217,7 +217,23 @@ class DetectionEngine:
                 continue
 
         return len(found_indicators)
+    def _calculate_confidence(
+        self,
+        indicator_count: int,
+        risk_score: int,
+    ) -> tuple[int, str]:
+        """Estimate evidence strength, not ransomware probability."""
 
+        if indicator_count >= 3 and risk_score >= 40:
+            return 90, "high"
+
+        if indicator_count >= 2:
+            return 65, "medium"
+
+        if indicator_count == 1:
+            return 35, "low"
+
+        return 10, "low"
     def analyze_event(
         self,
         event: dict[str, Any],
@@ -321,6 +337,10 @@ class DetectionEngine:
                 f"({correlated_indicator_count} distinct indicators in 60 seconds)"
             )
         score = min(score, 100)
+        confidence_score, confidence_level = self._calculate_confidence(
+            correlated_indicator_count,
+            score,
+        )
 
         if score >= 70:
             severity = "critical"
@@ -338,6 +358,8 @@ class DetectionEngine:
             "risk_score": score,
             "severity": severity,
             "status": "needs_review",
+            "confidence_score": confidence_score,
+            "confidence_level": confidence_level,
             "reasons": reasons or [
                 "No configured risk indicators matched"
             ],

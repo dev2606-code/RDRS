@@ -391,3 +391,28 @@ def test_correlated_ransomware_indicators_increase_risk(tmp_path):
         "correlated ransomware indicators" in reason.lower()
         for reason in result["reasons"]
     )
+def test_confidence_high_with_multiple_indicators(tmp_path):
+    engine = DetectionEngine(str(tmp_path))
+
+    score, level = engine._calculate_confidence(3, 45)
+
+    assert score == 90
+    assert level == "high"
+
+
+def test_confidence_medium_with_two_indicators(tmp_path):
+    engine = DetectionEngine(str(tmp_path))
+
+    score, level = engine._calculate_confidence(2, 30)
+
+    assert score == 65
+    assert level == "medium"
+
+
+def test_confidence_low_with_one_indicator(tmp_path):
+    engine = DetectionEngine(str(tmp_path))
+
+    score, level = engine._calculate_confidence(1, 10)
+
+    assert score == 35
+    assert level == "low"
