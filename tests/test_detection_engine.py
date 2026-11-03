@@ -321,3 +321,34 @@ def test_rapid_file_renaming_increases_risk(tmp_path):
         "file-rename activity" in reason
         for reason in result["reasons"]
     )
+def test_suspicious_extension_burst_increases_risk(tmp_path):
+    sandbox = tmp_path / "sandbox"
+    sandbox.mkdir()
+
+    engine = DetectionEngine(str(sandbox))
+    now = datetime.now(timezone.utc).isoformat()
+
+    recent_events = [
+        {
+            "path": str(sandbox / f"file_{i}.locked"),
+            "action": "created",
+            "timestamp": now,
+        }
+        for i in range(4)
+    ]
+
+    result = engine.analyze_event(
+        {
+            "path": str(sandbox / "current.locked"),
+            "action": "created",
+            "timestamp": now,
+        },
+        recent_events=recent_events,
+    )
+
+    assert result["risk_score"] == 50
+    assert result["severity"] == "high"
+    assert any(
+        "suspicious extension burst" in reason.lower()
+        for reason in result["reasons"]
+    )

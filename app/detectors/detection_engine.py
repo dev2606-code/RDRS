@@ -1,3 +1,4 @@
+
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
@@ -100,6 +101,54 @@ class DetectionEngine:
 
         return len(moved_paths)
 
+    def _count_recent_suspicious_extensions(
+        self,
+        recent_events: list[dict[str, Any]],
+        current_time: datetime,
+    ) -> int:
+        """Count distinct suspicious-extension files changed within 60 seconds."""
+
+        cutoff = current_time - timedelta(seconds=60)
+        suspicious_paths = set()
+
+        for item in recent_events:
+            if item.get("action") not in {"created", "modified", "moved"}:
+                continue
+
+            timestamp = item.get("timestamp")
+            if not timestamp:
+                continue
+
+            try:
+                if isinstance(timestamp, (int, float)):
+                    event_time = datetime.fromtimestamp(
+                        timestamp,
+                        tz=timezone.utc,
+                    )
+                else:
+                    event_time = datetime.fromisoformat(
+                        str(timestamp).replace("Z", "+00:00")
+                    )
+
+                    if event_time.tzinfo is None:
+                        event_time = event_time.replace(tzinfo=timezone.utc)
+
+                if not cutoff <= event_time <= current_time:
+                    continue
+
+                event_path = Path(item["path"]).resolve()
+
+                if not event_path.is_relative_to(self.sandbox):
+                    continue
+
+                if event_path.suffix.lower() in self.suspicious_extensions:
+                    suspicious_paths.add(str(event_path))
+
+            except (ValueError, TypeError, KeyError, OSError):
+                continue
+
+        return len(suspicious_paths)
+
     def analyze_event(
         self,
         event: dict[str, Any],
@@ -124,6 +173,12 @@ class DetectionEngine:
         )
         recent_move_count = self._count_recent_file_moves(
             all_events, current_time
+        )
+        recent_suspicious_extension_count = (
+            self._count_recent_suspicious_extensions(
+                all_events,
+                current_time,
+            )
         )
 
         if file_path.suffix.lower() in self.suspicious_extensions:
@@ -156,6 +211,13 @@ class DetectionEngine:
             reasons.append(
                 f"Rapid file-rename activity "
                 f"({recent_move_count} distinct files in 60 seconds)"
+            )
+
+        if recent_suspicious_extension_count >= 5:
+            score += 20
+            reasons.append(
+                "Suspicious extension burst detected "
+                f"({recent_suspicious_extension_count} distinct files in 60 seconds)"
             )
 
         if action in {"created", "modified"}:
