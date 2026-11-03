@@ -637,29 +637,42 @@ toolbar.querySelector("#incident-search")
 toolbar.querySelector("#incident-severity")
   .addEventListener("change", filterIncidentRows);
 
-      if (events.length === 0) {
-        tbody.innerHTML =
-          '<tr><td colspan="5">No file events returned by the backend.</td></tr>';
-      } else {
-        tbody.innerHTML = events.map(event => {
-          const timestamp = formatTimestamp(event.timestamp);
-          const path = event.path ?? "Unknown path";
-          const action = event.action ?? event.event_type ?? "File event";
-          const entropy = Number(event.entropy ?? 0).toFixed(2);
-          const risk = Number(event.risk_score ?? 0);
-          const severity = getSeverityClass(event.severity ?? getRiskLevel(risk));
+// Live File Events table
+if (events.length === 0) {
+  tbody.innerHTML =
+    '<tr><td colspan="6">No file events returned by the backend.</td></tr>';
+} else {
+  tbody.innerHTML = events.map(event => {
+    const timestamp = formatTimestamp(event.timestamp);
+    const path = event.path ?? "Unknown path";
+    const action = event.action ?? event.event_type ?? "File event";
+    const entropy = Number(event.entropy ?? 0).toFixed(2);
+    const risk = Number(event.risk_score ?? 0);
+    const severity = getSeverityClass(
+      event.severity ?? getRiskLevel(risk)
+    );
 
-          return `
-            <tr>
-              <td>${escapeHTML(timestamp)}</td>
-              <td>${escapeHTML(path)}</td>
-              <td>${escapeHTML(action)}</td>
-              <td>${escapeHTML(entropy)}</td>
-              <td><span class="tag ${severity}">${risk}</span></td>
-            </tr>
-          `;
-        }).join("");
-      }
+    const confidenceScore = Number(event.confidence_score ?? 10);
+    const confidenceLevel = String(
+      event.confidence_level ?? "low"
+    ).toUpperCase();
+
+    return `
+      <tr>
+        <td>${escapeHTML(timestamp)}</td>
+        <td>${escapeHTML(path)}</td>
+        <td>${escapeHTML(action)}</td>
+        <td>${escapeHTML(entropy)}</td>
+        <td>
+          <span class="tag ${severity}">${risk}</span>
+        </td>
+        <td>
+          ${escapeHTML(`${confidenceScore}/100 · ${confidenceLevel}`)}
+        </td>
+      </tr>
+    `;
+  }).join("");
+}
     }
 
     showToast(`Loaded ${events.length} RDRS event(s).`);
@@ -670,7 +683,7 @@ toolbar.querySelector("#incident-severity")
 
     if (tbody) {
       tbody.innerHTML =
-        '<tr><td colspan="5">Unable to load events. Check that the backend is running.</td></tr>';
+        '<tr><td colspan="6">Unable to load events. Check that the backend is running.</td></tr>';
     }
 
     if (note) note.textContent = "Could not retrieve live detection data.";
@@ -733,13 +746,15 @@ async function loadLiveIncidents() {
     if (tbody) {
       if (incidents.length === 0) {
         tbody.innerHTML =
-          '<tr><td colspan="5">No incidents found. Create a test incident inside the sandbox.</td></tr>';
+          '<tr><td colspan="6">No incidents found. Create a test incident inside the sandbox.</td></tr>';
       } else {
         tbody.innerHTML = incidents.map(incident => {
           const id = incident.incident_id ?? incident.id;
           const path = incident.path ?? "Unknown path";
           const risk = Number(incident.risk_score ?? 0);
           const severity = getSeverityClass(incident.severity);
+          const confidenceScore = Number(incident.confidence_score ?? 10);
+const confidenceLevel = String(incident.confidence_level ?? "low").toUpperCase();
           const status = incident.incident_status ?? incident.status ?? "Open";
           const timestamp = formatTimestamp(incident.timestamp);
           const notes = incident.notes ?? "";
@@ -750,6 +765,7 @@ async function loadLiveIncidents() {
               <td class="mono">${escapeHTML(path)}</td>
               <td><span class="tag ${severity}">${escapeHTML(incident.severity ?? "unknown")} · ${risk}</span></td>
               <td>
+              <td>${confidenceScore}/100 · ${confidenceLevel}</td>
                 <select class="incident-status" data-incident-id="${escapeHTML(id)}">
                   ${["Open", "Investigating", "Resolved", "False Positive"]
                     .map(option =>
@@ -814,7 +830,7 @@ async function loadLiveIncidents() {
     if (badge) badge.textContent = "API OFFLINE";
     if (tbody) {
       tbody.innerHTML =
-        '<tr><td colspan="5">Unable to load incidents. Check the backend.</td></tr>';
+        '<tr><td colspan="6">Unable to load incidents. Check the backend.</td></tr>';
     }
     if (note) note.textContent = "Could not retrieve incident data.";
 
@@ -866,7 +882,7 @@ updateNavigation(page);
       </div>
 
       ${tablePage(
-        "Live File Events",
+        ["Time", "File Path", "Event", "Entropy", "Risk", "Confidence"],
         "File activity collected by the sandbox monitor.",
         ["Time", "File Path", "Event", "Entropy", "Risk"],
         [],
