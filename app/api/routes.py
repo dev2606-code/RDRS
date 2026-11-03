@@ -93,10 +93,11 @@ def alerts(limit: int = Query(default=100, ge=1, le=1000)):
         else:
             severity = "medium"
             recommendation = "Review the event and confirm it is expected."
-
         alert_records.append({
             **record,
             "severity": severity,
+            "confidence_score": record.get("confidence_score", 10),
+            "confidence_level": record.get("confidence_level", "low"),
             "recommendation": recommendation,
         })
 
