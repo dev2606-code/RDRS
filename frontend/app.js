@@ -737,8 +737,10 @@ async function loadLiveIncidents() {
 
     cards?.forEach((card, index) => {
       if (index >= counts.length) return;
+
       const number = card.querySelector(".stat-number");
       const foot = card.querySelector(".stat-foot");
+
       if (number) number.textContent = String(counts[index]).padStart(2, "0");
       if (foot) foot.textContent = "Live incident records";
     });
@@ -754,7 +756,9 @@ async function loadLiveIncidents() {
           const risk = Number(incident.risk_score ?? 0);
           const severity = getSeverityClass(incident.severity);
           const confidenceScore = Number(incident.confidence_score ?? 10);
-const confidenceLevel = String(incident.confidence_level ?? "low").toUpperCase();
+          const confidenceLevel = String(
+            incident.confidence_level ?? "low"
+          ).toUpperCase();
           const status = incident.incident_status ?? incident.status ?? "Open";
           const timestamp = formatTimestamp(incident.timestamp);
           const notes = incident.notes ?? "";
@@ -763,19 +767,27 @@ const confidenceLevel = String(incident.confidence_level ?? "low").toUpperCase()
             <tr>
               <td>${escapeHTML(id)}</td>
               <td class="mono">${escapeHTML(path)}</td>
-              <td><span class="tag ${severity}">${escapeHTML(incident.severity ?? "unknown")} · ${risk}</span></td>
               <td>
+                <span class="tag ${severity}">
+                  ${escapeHTML(incident.severity ?? "unknown")} · ${risk}
+                </span>
+              </td>
               <td>${confidenceScore}/100 · ${confidenceLevel}</td>
+              <td>
                 <select class="incident-status" data-incident-id="${escapeHTML(id)}">
                   ${["Open", "Investigating", "Resolved", "False Positive"]
                     .map(option =>
                       `<option value="${option}" ${status === option ? "selected" : ""}>${option}</option>`
                     ).join("")}
                 </select>
-                <textarea class="incident-notes" data-incident-id="${escapeHTML(id)}"
+
+                <textarea class="incident-notes"
+                  data-incident-id="${escapeHTML(id)}"
                   placeholder="Investigation notes">${escapeHTML(notes)}</textarea>
+
                 <button class="btn btn-secondary save-incident"
-                  data-incident-id="${escapeHTML(id)}" type="button">Save</button>
+                  data-incident-id="${escapeHTML(id)}"
+                  type="button">Save</button>
               </td>
               <td>${escapeHTML(timestamp)}</td>
             </tr>
@@ -785,9 +797,11 @@ const confidenceLevel = String(incident.confidence_level ?? "low").toUpperCase()
         tbody.querySelectorAll(".save-incident").forEach(button => {
           button.addEventListener("click", async () => {
             const id = button.dataset.incidentId;
+
             const statusSelect = tbody.querySelector(
               `.incident-status[data-incident-id="${id}"]`
             );
+
             const notesInput = tbody.querySelector(
               `.incident-notes[data-incident-id="${id}"]`
             );
@@ -824,19 +838,23 @@ const confidenceLevel = String(incident.confidence_level ?? "low").toUpperCase()
     }
 
     showToast(`Loaded ${incidents.length} incident(s).`);
+
   } catch (error) {
     console.error("RDRS incidents API error:", error);
 
     if (badge) badge.textContent = "API OFFLINE";
+
     if (tbody) {
       tbody.innerHTML =
         '<tr><td colspan="6">Unable to load incidents. Check the backend.</td></tr>';
     }
+
     if (note) note.textContent = "Could not retrieve incident data.";
 
     showToast("Could not load incidents. Check the backend.");
   }
 }
+
 
 
 // ============================================================
@@ -929,6 +947,10 @@ updateNavigation(page);
         "Live alert records from the RDRS backend.",
         ["ID", "Title / File Path", "Severity / Risk", "Status", "Detected"],
         [],
+        "Refresh Incidents"
+      )}
+       ["ID", "Title / File Path", "Severity / Risk", "Confidence", "Status", "Detected"],
+         [],
         "Refresh Incidents"
       )}
 <div style="margin: 12px 0;">
