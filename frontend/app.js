@@ -459,15 +459,17 @@ function showOverviewEventDetails(event) {
     padding: 20px;
   `;
 
-  const details = [
-    ["Event ID", event.id ?? "N/A"],
-    ["File Path", event.path ?? "Unknown"],
-    ["Action", event.action ?? "Unknown"],
-    ["Timestamp", formatTimestamp(event.timestamp)],
-    ["Risk Score", event.risk_score ?? 0],
-    ["Severity", event.severity ?? "Unknown"],
-    ["Detection Reasons", (event.reasons || []).join(", ") || "No reasons recorded"]
-  ];
+const details = [
+  ["Event ID", event.id ?? "N/A"],
+  ["File Path", event.path ?? "Unknown"],
+  ["Action", event.action ?? "Unknown"],
+  ["Timestamp", formatTimestamp(event.timestamp)],
+  ["Risk Score", event.risk_score ?? 0],
+  ["Severity", event.severity ?? "Unknown"],
+  ["Confidence Score", `${event.confidence_score ?? 10}/100`],
+  ["Confidence Level", event.confidence_level ?? "low"],
+  ["Detection Reasons", (event.reasons || []).join(", ") || "No reasons recorded"]
+];
 
   const content = document.createElement("div");
 
