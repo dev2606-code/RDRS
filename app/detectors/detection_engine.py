@@ -149,6 +149,75 @@ class DetectionEngine:
 
         return len(suspicious_paths)
 
+    def _count_correlated_indicators(
+        self,
+        recent_events: list[dict[str, Any]],
+        current_reasons: list[str],
+        current_time: datetime,
+    ) -> int:
+        """Count distinct ransomware-risk indicator categories."""
+
+        cutoff = current_time - timedelta(seconds=60)
+
+        indicator_keywords = {
+            "entropy": ("high file entropy",),
+            "renaming": ("rapid file-rename activity",),
+            "extension": (
+                "suspicious file extension",
+                "suspicious extension burst",
+                "multiple suspicious file extensions",
+            ),
+            "file_changes": (
+                "file-change activity",
+                "file change activity",
+            ),
+        }
+
+        found_indicators = set()
+
+        for reason in current_reasons:
+            reason_lower = reason.lower()
+
+            for category, keywords in indicator_keywords.items():
+                if any(keyword in reason_lower for keyword in keywords):
+                    found_indicators.add(category)
+
+        for item in recent_events:
+            timestamp = item.get("timestamp")
+            if not timestamp:
+                continue
+
+            try:
+                if isinstance(timestamp, (int, float)):
+                    event_time = datetime.fromtimestamp(
+                        timestamp, tz=timezone.utc
+                    )
+                else:
+                    event_time = datetime.fromisoformat(
+                        str(timestamp).replace("Z", "+00:00")
+                    )
+                    if event_time.tzinfo is None:
+                        event_time = event_time.replace(tzinfo=timezone.utc)
+
+                if not cutoff <= event_time <= current_time:
+                    continue
+
+                event_path = Path(item["path"]).resolve()
+                if not event_path.is_relative_to(self.sandbox):
+                    continue
+
+                for reason in item.get("reasons") or []:
+                    reason_lower = str(reason).lower()
+
+                    for category, keywords in indicator_keywords.items():
+                        if any(keyword in reason_lower for keyword in keywords):
+                            found_indicators.add(category)
+
+            except (ValueError, TypeError, KeyError, OSError):
+                continue
+
+        return len(found_indicators)
+
     def analyze_event(
         self,
         event: dict[str, Any],
@@ -239,7 +308,18 @@ class DetectionEngine:
 
         if action == "deleted" and entropy is None:
             reasons.append("File content unavailable for entropy analysis")
+        correlated_indicator_count = self._count_correlated_indicators(
+            recent_events or [],
+            reasons,
+            current_time,
+        )
 
+        if correlated_indicator_count >= 3:
+            score += 15
+            reasons.append(
+                "Correlated ransomware indicators detected "
+                f"({correlated_indicator_count} distinct indicators in 60 seconds)"
+            )
         score = min(score, 100)
 
         if score >= 70:

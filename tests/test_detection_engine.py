@@ -352,3 +352,42 @@ def test_suspicious_extension_burst_increases_risk(tmp_path):
         "suspicious extension burst" in reason.lower()
         for reason in result["reasons"]
     )
+def test_correlated_ransomware_indicators_increase_risk(tmp_path):
+    sandbox = tmp_path / "sandbox"
+    sandbox.mkdir()
+
+    engine = DetectionEngine(str(sandbox))
+    now = datetime.now(timezone.utc).isoformat()
+
+    recent_events = [
+        {
+            "path": str(sandbox / "document.txt"),
+            "action": "modified",
+            "timestamp": now,
+            "risk_score": 10,
+            "reasons": ["High file entropy"],
+        },
+        {
+            "path": str(sandbox / "photo.txt"),
+            "action": "moved",
+            "timestamp": now,
+            "risk_score": 10,
+            "reasons": ["Rapid file-rename activity"],
+        },
+    ]
+
+    result = engine.analyze_event(
+        {
+            "path": str(sandbox / "current.locked"),
+            "action": "created",
+            "timestamp": now,
+        },
+        recent_events=recent_events,
+    )
+
+    assert result["risk_score"] == 45
+    assert result["severity"] == "high"
+    assert any(
+        "correlated ransomware indicators" in reason.lower()
+        for reason in result["reasons"]
+    )
