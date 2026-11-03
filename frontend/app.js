@@ -302,6 +302,7 @@ function updateNavigation(page) {
 // OVERVIEW PAGE
 // ============================================================
 
+
 async function RecentEvents() {
   const setText = (selector, value) => {
     const element = document.querySelector(selector);
@@ -323,12 +324,10 @@ async function RecentEvents() {
       ? incidentsResponse
       : incidentsResponse.incidents || [];
 
-    // Count high-risk events in the events returned by the API.
     const highRiskCount = events.filter(event =>
       Number(event.risk_score ?? 0) >= 20
     ).length;
 
-    // Count incidents that are not resolved.
     const openCount = incidents.filter(incident =>
       !["resolved", "closed"].includes(
         String(incident.status ?? "").toLowerCase()
@@ -337,24 +336,36 @@ async function RecentEvents() {
 
     setText("#overview-critical", highRiskCount);
     setText("#overview-open-alerts", openCount);
-
-    // The API exposes one configured sandbox path, not a folder inventory.
     setText("#overview-folders", status.sandbox ? "1" : "0");
 
+    // Check backend, monitor, and sandbox independently.
+    const backendConnected = Boolean(status.service);
     const monitoringRunning =
       String(status.monitoring ?? "").toLowerCase() === "running";
+    const sandboxAvailable = Boolean(status.sandbox);
 
-    setText(
-      "#overview-health",
-      monitoringRunning ? "Healthy" : "Check"
-    );
+    let health = "Check";
+    let healthNote = "Backend connected · Review system status";
 
-    setText(
-      "#overview-health-note",
-      status.sandbox
-        ? `Backend connected · ${status.mode || "mode unknown"}`
-        : "Backend connected · sandbox path unavailable"
-    );
+    if (backendConnected && monitoringRunning && sandboxAvailable) {
+      health = "Healthy";
+      healthNote = "Backend connected · Monitor running · Sandbox ready";
+    } else if (backendConnected && !monitoringRunning) {
+      healthNote = sandboxAvailable
+        ? "Backend connected · Monitor is not running"
+        : "Backend connected · Monitor stopped · Sandbox unavailable";
+    } else if (backendConnected && !sandboxAvailable) {
+      healthNote = "Backend connected · Sandbox path unavailable";
+    }
+    setText("#overview-health", health);
+    const checkedAt = new Date().toLocaleTimeString();
+
+setText(
+  "#overview-health-note",
+  monitoringRunning && sandboxAvailable
+    ? `Backend connected · Monitor running · Sandbox ready · Last checked: ${checkedAt}`
+    : `System check needs attention · Last checked: ${checkedAt}`
+);
 
     const badge = document.querySelector("#api-status");
     if (badge) {
@@ -363,12 +374,12 @@ async function RecentEvents() {
       badge.classList.remove("offline");
     }
 
-    console.log("RDRS overview loaded:", {
-      highRiskCount,
-      openCount,
-      sandbox: status.sandbox,
-      monitoring: status.monitoring
+    console.log("RDRS system health:", {
+      backendConnected,
+      monitoringRunning,
+      sandboxAvailable
     });
+
   } catch (error) {
     console.error("Overview status error:", error);
 
