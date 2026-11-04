@@ -304,10 +304,14 @@ class DetectionEngine:
         )
 
         historical_events = recent_events or []
+        current_event = {
+            **event,
+            "timestamp": current_time.isoformat(),
+        }
 
         all_events = [
             *historical_events,
-            event,
+            current_event,
         ]
 
         recent_change_count = self._count_recent_file_changes(
@@ -336,36 +340,29 @@ class DetectionEngine:
             )
 
         # File entropy.
-        if action in {"created", "modified"} and file_path.is_file():
-            entropy = calculate_entropy(str(file_path))
+        if action in {"created", "modified"}:
+            try:
+                if file_path.is_file():
+                    entropy = calculate_entropy(str(file_path))
 
-            is_compressed_file = (
-                file_path.suffix.lower()
-                in self.compressed_extensions
-            )
+                    is_compressed_file = (
+                        file_path.suffix.lower()
+                        in self.compressed_extensions
+                    )
 
-            if entropy >= 7.2 and not is_compressed_file:
-                score += 10
-                reasons.append("High file entropy")
+                    if entropy >= 7.2 and not is_compressed_file:
+                        score += 10
+                        reasons.append("High file entropy")
+                else:
+                    reasons.append(
+                        "File content unavailable for entropy analysis"
+                    )
 
-        # Individual file operations.
-        if action == "deleted":
-            score += 10
-            reasons.append("File deletion observed")
-
-        if action == "moved":
-            score += 10
-            reasons.append("File move observed")
-
-        # Rapid file renaming.
-        if recent_move_count >= 5:
-            score += 15
-
-            reasons.append(
-                "Rapid file-rename activity "
-                f"({recent_move_count} distinct files in 60 seconds)"
-            )
-
+            except OSError:
+                entropy = None
+                reasons.append(
+                    "File content unavailable for entropy analysis"
+                )
         # Suspicious extension burst.
         if recent_suspicious_extension_count >= 5:
             score += 20
@@ -380,6 +377,25 @@ class DetectionEngine:
         if action in {"created", "modified"}:
             score += 5
             reasons.append(f"File {action} observed")
+
+        # File deletion activity.
+        elif action == "deleted":
+            score += 10
+            reasons.append("File deletion observed")
+
+        # File rename activity.
+        elif action == "moved":
+            score += 10
+            reasons.append("File rename observed")
+
+        # Rapid file renaming.
+        if recent_move_count >= 5:
+            score += 15
+
+            reasons.append(
+                "Rapid file-rename activity "
+                f"({recent_move_count} distinct files in 60 seconds)"
+            )
 
         # Rapid file modification.
         if recent_change_count >= 10:

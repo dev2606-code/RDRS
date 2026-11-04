@@ -483,3 +483,38 @@ def test_rename_destination_with_suspicious_extension_is_detected(
         "Suspicious file extension" in reason
         for reason in result["reasons"]
     )
+@pytest.mark.parametrize(
+    "error_type",
+    [FileNotFoundError, PermissionError],
+)
+def test_entropy_errors_do_not_crash_detection(
+    tmp_path, monkeypatch, error_type
+):
+    sandbox = tmp_path / "sandbox"
+    sandbox.mkdir()
+
+    sample = sandbox / "sample.txt"
+    sample.write_text("Normal test content.", encoding="utf-8")
+
+    engine = DetectionEngine(str(sandbox))
+
+    def raise_file_error(_):
+        raise error_type("Synthetic file access error")
+
+    monkeypatch.setattr(
+        "app.detectors.detection_engine.calculate_entropy",
+        raise_file_error,
+    )
+
+    result = engine.analyze_event({
+        "path": str(sample),
+        "action": "created",
+    })
+
+    assert result["entropy"] is None
+    assert result["risk_score"] == 5
+    assert result["status"] == "needs_review"
+    assert any(
+        "File content unavailable for entropy analysis" in reason
+        for reason in result["reasons"]
+    )
