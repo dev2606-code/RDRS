@@ -11,8 +11,6 @@ from watchdog.observers import Observer
 
 
 logger = logging.getLogger("rdrs")
-
-
 class SandboxEventHandler(FileSystemEventHandler):
     """Record file-system events without modifying monitored files."""
 
@@ -36,17 +34,29 @@ class SandboxEventHandler(FileSystemEventHandler):
         if event.is_directory:
             return
 
+        source_path = str(event.src_path)
+        destination_path = None
+
+        if action == "moved":
+            destination_path = str(event.dest_path)
+
+        monitored_path = destination_path or source_path
+
         logger.info(
             "Watchdog detected file event: action=%s path=%s",
             action,
-            event.src_path,
+            monitored_path,
         )
 
         event_data = {
             "action": action,
-            "path": str(event.src_path),
+            "path": monitored_path,
             "timestamp": time.time(),
         }
+
+        if action == "moved":
+            event_data["source_path"] = source_path
+            event_data["destination_path"] = destination_path
 
         try:
             self.callback(event_data)
@@ -55,8 +65,6 @@ class SandboxEventHandler(FileSystemEventHandler):
                 "Failed to process watchdog event: %s",
                 event_data,
             )
-
-
 class SandboxFileMonitor:
     """Monitor a dedicated sandbox directory without modifying files."""
 
