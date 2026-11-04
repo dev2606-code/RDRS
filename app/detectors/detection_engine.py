@@ -1,4 +1,3 @@
-
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
@@ -8,6 +7,8 @@ from app.core.entropy import calculate_entropy
 
 class DetectionEngine:
     """Generate explainable, preliminary file-risk alerts."""
+
+    WINDOW_SECONDS = 60
 
     def __init__(self, sandbox_directory: str):
         self.sandbox = Path(sandbox_directory).resolve()
@@ -21,145 +22,16 @@ class DetectionEngine:
             ".ransom",
         }
 
-    def _count_recent_file_changes(
-        self,
-        recent_events: list[dict[str, Any]],
-        current_time: datetime,
-    ) -> int:
-        """Count distinct modified files within the last 60 seconds."""
+        self.compressed_extensions = {
+            ".gz",
+            ".zip",
+            ".rar",
+            ".7z",
+            ".bz2",
+            ".xz",
+        }
 
-        cutoff = current_time - timedelta(seconds=60)
-        changed_paths = set()
-
-        for item in recent_events:
-            if item.get("action") != "modified":
-                continue
-
-            timestamp = item.get("timestamp")
-            if not timestamp:
-                continue
-
-            try:
-                if isinstance(timestamp, (int, float)):
-                    event_time = datetime.fromtimestamp(
-                        timestamp, tz=timezone.utc
-                    )
-                else:
-                    event_time = datetime.fromisoformat(
-                        str(timestamp).replace("Z", "+00:00")
-                    )
-                    if event_time.tzinfo is None:
-                        event_time = event_time.replace(tzinfo=timezone.utc)
-
-                if cutoff <= event_time <= current_time:
-                    event_path = Path(item["path"]).resolve()
-                    if event_path.is_relative_to(self.sandbox):
-                        changed_paths.add(str(event_path))
-
-            except (ValueError, TypeError, KeyError, OSError):
-                continue
-
-        return len(changed_paths)
-
-    def _count_recent_file_moves(
-        self,
-        recent_events: list[dict[str, Any]],
-        current_time: datetime,
-    ) -> int:
-        """Count distinct files moved within the last 60 seconds."""
-
-        cutoff = current_time - timedelta(seconds=60)
-        moved_paths = set()
-
-        for item in recent_events:
-            if item.get("action") != "moved":
-                continue
-
-            timestamp = item.get("timestamp")
-            if not timestamp:
-                continue
-
-            try:
-                if isinstance(timestamp, (int, float)):
-                    event_time = datetime.fromtimestamp(
-                        timestamp, tz=timezone.utc
-                    )
-                else:
-                    event_time = datetime.fromisoformat(
-                        str(timestamp).replace("Z", "+00:00")
-                    )
-                    if event_time.tzinfo is None:
-                        event_time = event_time.replace(tzinfo=timezone.utc)
-
-                if cutoff <= event_time <= current_time:
-                    event_path = Path(item["path"]).resolve()
-                    if event_path.is_relative_to(self.sandbox):
-                        moved_paths.add(str(event_path))
-
-            except (ValueError, TypeError, KeyError, OSError):
-                continue
-
-        return len(moved_paths)
-
-    def _count_recent_suspicious_extensions(
-        self,
-        recent_events: list[dict[str, Any]],
-        current_time: datetime,
-    ) -> int:
-        """Count distinct suspicious-extension files changed within 60 seconds."""
-
-        cutoff = current_time - timedelta(seconds=60)
-        suspicious_paths = set()
-
-        for item in recent_events:
-            if item.get("action") not in {"created", "modified", "moved"}:
-                continue
-
-            timestamp = item.get("timestamp")
-            if not timestamp:
-                continue
-
-            try:
-                if isinstance(timestamp, (int, float)):
-                    event_time = datetime.fromtimestamp(
-                        timestamp,
-                        tz=timezone.utc,
-                    )
-                else:
-                    event_time = datetime.fromisoformat(
-                        str(timestamp).replace("Z", "+00:00")
-                    )
-
-                    if event_time.tzinfo is None:
-                        event_time = event_time.replace(tzinfo=timezone.utc)
-
-                if not cutoff <= event_time <= current_time:
-                    continue
-
-                event_path = Path(item["path"]).resolve()
-
-                if not event_path.is_relative_to(self.sandbox):
-                    continue
-
-                if event_path.suffix.lower() in self.suspicious_extensions:
-                    suspicious_paths.add(str(event_path))
-
-            except (ValueError, TypeError, KeyError, OSError):
-                continue
-
-        return len(suspicious_paths)
-
-    def _count_correlated_indicators(
-        self,
-        recent_events: list[dict[str, Any]],
-        current_reasons: list[str],
-        current_time: datetime,
-    ) -> int:
-        """Count distinct ransomware-risk indicator categories."""
-
-        cutoff = current_time - timedelta(seconds=60)
-
-        indicator_keywords = {
+        self.indicator_keywords = {
             "entropy": ("high file entropy",),
             "renaming": ("rapid file-rename activity",),
             "extension": (
@@ -173,50 +45,220 @@ class DetectionEngine:
             ),
         }
 
-        found_indicators = set()
+    @staticmethod
+    def _parse_timestamp(timestamp: Any) -> datetime | None:
+        """Convert supported timestamps into timezone-aware UTC datetimes."""
 
-        for reason in current_reasons:
-            reason_lower = reason.lower()
+        if timestamp is None or timestamp == "":
+            return None
 
-            for category, keywords in indicator_keywords.items():
-                if any(keyword in reason_lower for keyword in keywords):
-                    found_indicators.add(category)
+        try:
+            if isinstance(timestamp, (int, float)):
+                return datetime.fromtimestamp(
+                    timestamp,
+                    tz=timezone.utc,
+                )
+
+            parsed = datetime.fromisoformat(
+                str(timestamp).replace("Z", "+00:00")
+            )
+
+            if parsed.tzinfo is None:
+                parsed = parsed.replace(tzinfo=timezone.utc)
+
+            return parsed.astimezone(timezone.utc)
+
+        except (ValueError, TypeError, OverflowError, OSError):
+            return None
+
+    def _is_sandbox_path(self, path: str) -> bool:
+        """Check whether a resolved path belongs to the configured sandbox."""
+
+        try:
+            resolved = Path(path).resolve()
+            return resolved.is_relative_to(self.sandbox)
+        except (ValueError, TypeError, OSError):
+            return False
+
+    def _event_path(self, event: dict[str, Any]) -> Path | None:
+        """Return the primary event path when it is inside the sandbox."""
+
+        path = event.get("path")
+
+        if not path:
+            return None
+
+        try:
+            resolved = Path(path).resolve()
+
+            if resolved.is_relative_to(self.sandbox):
+                return resolved
+
+        except (ValueError, TypeError, OSError):
+            pass
+
+        return None
+
+    def _count_recent_file_changes(
+        self,
+        recent_events: list[dict[str, Any]],
+        current_time: datetime,
+    ) -> int:
+        """Count distinct modified files within the last 60 seconds."""
+
+        cutoff = current_time - timedelta(
+            seconds=self.WINDOW_SECONDS
+        )
+
+        changed_paths = set()
 
         for item in recent_events:
-            timestamp = item.get("timestamp")
-            if not timestamp:
+            if item.get("action") != "modified":
                 continue
 
-            try:
-                if isinstance(timestamp, (int, float)):
-                    event_time = datetime.fromtimestamp(
-                        timestamp, tz=timezone.utc
-                    )
-                else:
-                    event_time = datetime.fromisoformat(
-                        str(timestamp).replace("Z", "+00:00")
-                    )
-                    if event_time.tzinfo is None:
-                        event_time = event_time.replace(tzinfo=timezone.utc)
+            event_time = self._parse_timestamp(
+                item.get("timestamp")
+            )
 
-                if not cutoff <= event_time <= current_time:
-                    continue
-
-                event_path = Path(item["path"]).resolve()
-                if not event_path.is_relative_to(self.sandbox):
-                    continue
-
-                for reason in item.get("reasons") or []:
-                    reason_lower = str(reason).lower()
-
-                    for category, keywords in indicator_keywords.items():
-                        if any(keyword in reason_lower for keyword in keywords):
-                            found_indicators.add(category)
-
-            except (ValueError, TypeError, KeyError, OSError):
+            if event_time is None:
                 continue
+
+            if not cutoff <= event_time <= current_time:
+                continue
+
+            event_path = self._event_path(item)
+
+            if event_path is not None:
+                changed_paths.add(str(event_path))
+
+        return len(changed_paths)
+
+    def _count_recent_file_moves(
+        self,
+        recent_events: list[dict[str, Any]],
+        current_time: datetime,
+    ) -> int:
+        """Count distinct files moved within the last 60 seconds."""
+
+        cutoff = current_time - timedelta(
+            seconds=self.WINDOW_SECONDS
+        )
+
+        moved_paths = set()
+
+        for item in recent_events:
+            if item.get("action") != "moved":
+                continue
+
+            event_time = self._parse_timestamp(
+                item.get("timestamp")
+            )
+
+            if event_time is None:
+                continue
+
+            if not cutoff <= event_time <= current_time:
+                continue
+
+            event_path = self._event_path(item)
+
+            if event_path is not None:
+                moved_paths.add(str(event_path))
+
+        return len(moved_paths)
+
+    def _count_recent_suspicious_extensions(
+        self,
+        recent_events: list[dict[str, Any]],
+        current_time: datetime,
+    ) -> int:
+        """Count distinct suspicious-extension files changed in 60 seconds."""
+
+        cutoff = current_time - timedelta(
+            seconds=self.WINDOW_SECONDS
+        )
+
+        suspicious_paths = set()
+
+        for item in recent_events:
+            if item.get("action") not in {
+                "created",
+                "modified",
+                "moved",
+            }:
+                continue
+
+            event_time = self._parse_timestamp(
+                item.get("timestamp")
+            )
+
+            if event_time is None:
+                continue
+
+            if not cutoff <= event_time <= current_time:
+                continue
+
+            event_path = self._event_path(item)
+
+            if event_path is None:
+                continue
+
+            if event_path.suffix.lower() in self.suspicious_extensions:
+                suspicious_paths.add(str(event_path))
+
+        return len(suspicious_paths)
+
+    def _count_correlated_indicators(
+        self,
+        recent_events: list[dict[str, Any]],
+        current_reasons: list[str],
+        current_time: datetime,
+    ) -> int:
+        """Count distinct ransomware-risk indicator categories."""
+
+        cutoff = current_time - timedelta(
+            seconds=self.WINDOW_SECONDS
+        )
+
+        found_indicators = set()
+
+        def collect_indicators(reasons: list[str]) -> None:
+            for reason in reasons:
+                reason_lower = str(reason).lower()
+
+                for category, keywords in self.indicator_keywords.items():
+                    if any(
+                        keyword in reason_lower
+                        for keyword in keywords
+                    ):
+                        found_indicators.add(category)
+
+        collect_indicators(current_reasons)
+
+        for item in recent_events:
+            event_time = self._parse_timestamp(
+                item.get("timestamp")
+            )
+
+            if event_time is None:
+                continue
+
+            if not cutoff <= event_time <= current_time:
+                continue
+
+            if self._event_path(item) is None:
+                continue
+
+            reasons = item.get("reasons") or []
+
+            if isinstance(reasons, str):
+                reasons = [reasons]
+
+            if isinstance(reasons, list):
+                collect_indicators(reasons)
 
         return len(found_indicators)
+
     def _calculate_confidence(
         self,
         indicator_count: int,
@@ -234,31 +276,50 @@ class DetectionEngine:
             return 35, "low"
 
         return 10, "low"
+
     def analyze_event(
         self,
         event: dict[str, Any],
         recent_events: list[dict[str, Any]] | None = None,
     ) -> dict[str, Any]:
+        """Analyze one sandbox event using recent historical activity."""
 
-        file_path = Path(event["path"]).resolve()
+        file_path = self._event_path(event)
 
-        if not file_path.is_relative_to(self.sandbox):
-            raise ValueError("File is outside the configured sandbox")
+        if file_path is None:
+            raise ValueError(
+                "File is outside the configured sandbox"
+            )
 
         action = event.get("action")
         entropy = None
         reasons = []
         score = 0
 
-        current_time = datetime.now(timezone.utc)
-        all_events = [*(recent_events or []), event]
+        # Prefer the incoming event timestamp. Fall back to UTC now
+        # when the timestamp is missing or invalid.
+        current_time = (
+            self._parse_timestamp(event.get("timestamp"))
+            or datetime.now(timezone.utc)
+        )
+
+        historical_events = recent_events or []
+
+        all_events = [
+            *historical_events,
+            event,
+        ]
 
         recent_change_count = self._count_recent_file_changes(
-            all_events, current_time
+            all_events,
+            current_time,
         )
+
         recent_move_count = self._count_recent_file_moves(
-            all_events, current_time
+            all_events,
+            current_time,
         )
+
         recent_suspicious_extension_count = (
             self._count_recent_suspicious_extensions(
                 all_events,
@@ -266,23 +327,28 @@ class DetectionEngine:
             )
         )
 
+        # Suspicious file extension.
         if file_path.suffix.lower() in self.suspicious_extensions:
             score += 25
+
             reasons.append(
                 f"Suspicious file extension detected: {file_path.suffix}"
             )
 
+        # File entropy.
         if action in {"created", "modified"} and file_path.is_file():
             entropy = calculate_entropy(str(file_path))
 
-            is_compressed_file = file_path.suffix.lower() in {
-                ".gz", ".zip", ".rar", ".7z", ".bz2", ".xz"
-            }
+            is_compressed_file = (
+                file_path.suffix.lower()
+                in self.compressed_extensions
+            )
 
             if entropy >= 7.2 and not is_compressed_file:
                 score += 10
                 reasons.append("High file entropy")
 
+        # Individual file operations.
         if action == "deleted":
             score += 10
             reasons.append("File deletion observed")
@@ -291,55 +357,77 @@ class DetectionEngine:
             score += 10
             reasons.append("File move observed")
 
+        # Rapid file renaming.
         if recent_move_count >= 5:
             score += 15
+
             reasons.append(
-                f"Rapid file-rename activity "
+                "Rapid file-rename activity "
                 f"({recent_move_count} distinct files in 60 seconds)"
             )
 
+        # Suspicious extension burst.
         if recent_suspicious_extension_count >= 5:
             score += 20
+
             reasons.append(
                 "Suspicious extension burst detected "
-                f"({recent_suspicious_extension_count} distinct files in 60 seconds)"
+                f"({recent_suspicious_extension_count} "
+                "distinct files in 60 seconds)"
             )
 
+        # Normal creation and modification activity.
         if action in {"created", "modified"}:
             score += 5
             reasons.append(f"File {action} observed")
 
+        # Rapid file modification.
         if recent_change_count >= 10:
             score += 30
+
             reasons.append(
-                f"High file-change activity "
+                "High file-change activity "
                 f"({recent_change_count} distinct files in 60 seconds)"
             )
+
         elif recent_change_count >= 5:
             score += 15
+
             reasons.append(
-                f"Elevated file-change activity "
+                "Elevated file-change activity "
                 f"({recent_change_count} distinct files in 60 seconds)"
             )
 
         if action == "deleted" and entropy is None:
-            reasons.append("File content unavailable for entropy analysis")
-        correlated_indicator_count = self._count_correlated_indicators(
-            recent_events or [],
-            reasons,
-            current_time,
+            reasons.append(
+                "File content unavailable for entropy analysis"
+            )
+
+        # Correlation of independent indicator categories.
+        correlated_indicator_count = (
+            self._count_correlated_indicators(
+                historical_events,
+                reasons,
+                current_time,
+            )
         )
 
         if correlated_indicator_count >= 3:
             score += 15
+
             reasons.append(
                 "Correlated ransomware indicators detected "
-                f"({correlated_indicator_count} distinct indicators in 60 seconds)"
+                f"({correlated_indicator_count} "
+                "distinct indicators in 60 seconds)"
             )
+
         score = min(score, 100)
-        confidence_score, confidence_level = self._calculate_confidence(
-            correlated_indicator_count,
-            score,
+
+        confidence_score, confidence_level = (
+            self._calculate_confidence(
+                correlated_indicator_count,
+                score,
+            )
         )
 
         if score >= 70:

@@ -416,3 +416,70 @@ def test_confidence_low_with_one_indicator(tmp_path):
 
     assert score == 35
     assert level == "low"
+def test_event_timestamp_controls_recent_activity_window(tmp_path):
+    sandbox = tmp_path / "sandbox"
+    sandbox.mkdir()
+
+    sample = sandbox / "current.txt"
+    sample.write_text("Safe test content.", encoding="utf-8")
+
+    engine = DetectionEngine(str(sandbox))
+
+    event_time = datetime.now(timezone.utc) - timedelta(minutes=5)
+
+    future_events = [
+        {
+            "path": str(sandbox / f"future_{i}.txt"),
+            "action": "modified",
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        }
+        for i in range(12)
+    ]
+
+    result = engine.analyze_event(
+        {
+            "path": str(sample),
+            "action": "modified",
+            "timestamp": event_time.isoformat(),
+        },
+        recent_events=future_events,
+    )
+
+    assert result["risk_score"] == 5
+    assert not any(
+        "file-change activity" in reason.lower()
+        for reason in result["reasons"]
+    )
+
+
+def test_rename_destination_with_suspicious_extension_is_detected(
+    tmp_path,
+):
+    sandbox = tmp_path / "sandbox"
+    sandbox.mkdir()
+
+    renamed_file = sandbox / "report.pdf.locked"
+    renamed_file.write_text(
+        "Synthetic RDRS test data.",
+        encoding="utf-8",
+    )
+
+    engine = DetectionEngine(str(sandbox))
+
+    result = engine.analyze_event(
+        {
+            "path": str(renamed_file),
+            "source_path": str(sandbox / "report.pdf"),
+            "destination_path": str(renamed_file),
+            "action": "moved",
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        },
+        recent_events=[],
+    )
+
+    assert result["risk_score"] == 35
+    assert result["action"] == "moved"
+    assert any(
+        "Suspicious file extension" in reason
+        for reason in result["reasons"]
+    )
