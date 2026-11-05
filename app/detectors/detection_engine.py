@@ -458,6 +458,10 @@ class DetectionEngine:
         return {
             "path": str(file_path),
             "action": action,
+            "process_id": event.get("process_id"),
+            "process_name": event.get("process_name"),
+            "process_path": event.get("process_path"),
+            "username": event.get("username"),
             "entropy": entropy,
             "risk_score": score,
             "severity": severity,

@@ -518,3 +518,44 @@ def test_entropy_errors_do_not_crash_detection(
         "File content unavailable for entropy analysis" in reason
         for reason in result["reasons"]
     )
+
+def test_process_metadata_is_preserved_in_analysis_result(tmp_path):
+    sandbox = tmp_path / "sandbox"
+    sandbox.mkdir()
+
+    engine = DetectionEngine(str(sandbox))
+
+    event = {
+        "path": str(sandbox / "sample.txt"),
+        "action": "deleted",
+        "process_id": 1234,
+        "process_name": "explorer.exe",
+        "process_path": r"C:\Windows\explorer.exe",
+        "username": "test-user",
+    }
+
+    result = engine.analyze_event(event)
+
+    assert result["process_id"] == 1234
+    assert result["process_name"] == "explorer.exe"
+    assert result["process_path"] == r"C:\Windows\explorer.exe"
+    assert result["username"] == "test-user"
+    assert result["risk_score"] == 10
+
+
+def test_process_metadata_defaults_to_none_in_analysis_result(tmp_path):
+    sandbox = tmp_path / "sandbox"
+    sandbox.mkdir()
+
+    engine = DetectionEngine(str(sandbox))
+
+    result = engine.analyze_event({
+        "path": str(sandbox / "sample.txt"),
+        "action": "deleted",
+    })
+
+    assert result["process_id"] is None
+    assert result["process_name"] is None
+    assert result["process_path"] is None
+    assert result["username"] is None
+    assert result["risk_score"] == 10
