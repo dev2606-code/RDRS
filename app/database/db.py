@@ -70,6 +70,7 @@ class EventDatabase:
                 "TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP"
             )
             reasons_type = "JSONB NOT NULL"
+            process_id_type = "BIGINT"
         else:
             id_type = "INTEGER PRIMARY KEY AUTOINCREMENT"
             event_id_type = "INTEGER"
@@ -77,6 +78,7 @@ class EventDatabase:
                 "TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP"
             )
             reasons_type = "TEXT NOT NULL"
+            process_id_type = "INTEGER"
 
         with self._connect() as connection:
             connection.execute(f"""
@@ -91,7 +93,11 @@ class EventDatabase:
                     status TEXT NOT NULL,
                     reasons {reasons_type},
                     confidence_score INTEGER NOT NULL DEFAULT 10,
-                    confidence_level TEXT NOT NULL DEFAULT 'low'
+                    confidence_level TEXT NOT NULL DEFAULT 'low',
+                    process_id {process_id_type},
+                    process_name TEXT,
+                    process_path TEXT,
+                    username TEXT
                 )
             """)
 
@@ -120,6 +126,22 @@ class EventDatabase:
                     ADD COLUMN IF NOT EXISTS confidence_level
                     TEXT NOT NULL DEFAULT 'low'
                 """)
+                connection.execute("""
+                    ALTER TABLE events
+                    ADD COLUMN IF NOT EXISTS process_id BIGINT
+                """)
+                connection.execute("""
+                    ALTER TABLE events
+                    ADD COLUMN IF NOT EXISTS process_name TEXT
+                """)
+                connection.execute("""
+                    ALTER TABLE events
+                    ADD COLUMN IF NOT EXISTS process_path TEXT
+                """)
+                connection.execute("""
+                    ALTER TABLE events
+                    ADD COLUMN IF NOT EXISTS username TEXT
+                """)
             else:
                 columns = {
                     row["name"]
@@ -142,6 +164,19 @@ class EventDatabase:
                         TEXT NOT NULL DEFAULT 'low'
                     """)
 
+                process_columns = {
+                    "process_id": "INTEGER",
+                    "process_name": "TEXT",
+                    "process_path": "TEXT",
+                    "username": "TEXT",
+                }
+                for column, column_type in process_columns.items():
+                    if column not in columns:
+                        connection.execute(
+                            f"ALTER TABLE events ADD COLUMN "
+                            f"{column} {column_type}"
+                        )
+
     @staticmethod
     def _json_value(value):
         if isinstance(value, str):
@@ -152,6 +187,12 @@ class EventDatabase:
         reasons = event.get("reasons", [])
         confidence_score = event.get("confidence_score", 10)
         confidence_level = event.get("confidence_level", "low")
+        process_metadata = (
+            event.get("process_id"),
+            event.get("process_name"),
+            event.get("process_path"),
+            event.get("username"),
+        )
 
         with self.lock, self._connect() as connection:
             if self.use_postgres:
@@ -165,9 +206,13 @@ class EventDatabase:
                         status,
                         reasons,
                         confidence_score,
-                        confidence_level
+                        confidence_level,
+                        process_id,
+                        process_name,
+                        process_path,
+                        username
                     )
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                     RETURNING id
                 """, (
                     event["path"],
@@ -179,6 +224,7 @@ class EventDatabase:
                     json.dumps(reasons),
                     confidence_score,
                     confidence_level,
+                    *process_metadata,
                 )).fetchone()
 
                 event_id = int(row["id"])
@@ -201,9 +247,13 @@ class EventDatabase:
                         status,
                         reasons,
                         confidence_score,
-                        confidence_level
+                        confidence_level,
+                        process_id,
+                        process_name,
+                        process_path,
+                        username
                     )
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, (
                     event["path"],
                     event["action"],
@@ -214,6 +264,7 @@ class EventDatabase:
                     json.dumps(reasons),
                     confidence_score,
                     confidence_level,
+                    *process_metadata,
                 ))
 
                 event_id = int(cursor.lastrowid)
@@ -273,6 +324,10 @@ class EventDatabase:
                     e.severity,
                     e.confidence_score,
                     e.confidence_level,
+                    e.process_id,
+                    e.process_name,
+                    e.process_path,
+                    e.username,
                     e.reasons
                 FROM incidents i
                 JOIN events e ON e.id = i.event_id
