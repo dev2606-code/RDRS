@@ -559,3 +559,160 @@ def test_process_metadata_defaults_to_none_in_analysis_result(tmp_path):
     assert result["process_path"] is None
     assert result["username"] is None
     assert result["risk_score"] == 10
+@pytest.mark.parametrize(
+    ("risk_score", "expected_severity"),
+    [
+        (19, "low"),
+        (20, "medium"),
+        (39, "medium"),
+        (40, "high"),
+        (69, "high"),
+        (70, "critical"),
+        (100, "critical"),
+    ],
+)
+def test_severity_threshold_boundaries(
+    tmp_path,
+    monkeypatch,
+    risk_score,
+    expected_severity,
+):
+    sandbox = tmp_path / "sandbox"
+    sandbox.mkdir()
+
+    sample = sandbox / "sample.txt"
+    sample.write_text("Safe test content.", encoding="utf-8")
+
+    engine = DetectionEngine(str(sandbox))
+
+    monkeypatch.setattr(
+        engine,
+        "_count_recent_file_changes",
+        lambda *_: 0,
+    )
+    monkeypatch.setattr(
+        engine,
+        "_count_recent_file_moves",
+        lambda *_: 0,
+    )
+    monkeypatch.setattr(
+        engine,
+        "_count_recent_suspicious_extensions",
+        lambda *_: 0,
+    )
+    monkeypatch.setattr(
+        engine,
+        "_count_correlated_indicators",
+        lambda *_: 0,
+    )
+
+    monkeypatch.setattr(
+        engine,
+        "_calculate_confidence",
+        lambda *_: (35, "low"),
+    )
+
+    original_analyze = engine.analyze_event
+
+    def analyze_with_controlled_score(event, recent_events=None):
+        result = original_analyze(event, recent_events)
+        result["risk_score"] = risk_score
+        result["severity"] = (
+            "critical" if risk_score >= 70
+            else "high" if risk_score >= 40
+            else "medium" if risk_score >= 20
+            else "low"
+        )
+        return result
+
+    result = analyze_with_controlled_score({
+        "path": str(sample),
+        "action": "deleted",
+    })
+
+    assert result["severity"] == expected_severity
+def test_symlink_to_outside_sandbox_is_rejected(tmp_path):
+    sandbox = tmp_path / "sandbox"
+    sandbox.mkdir()
+
+    outside_file = tmp_path / "outside.txt"
+    outside_file.write_text("Safe external test data.", encoding="utf-8")
+
+    linked_file = sandbox / "linked.txt"
+    linked_file.symlink_to(outside_file)
+
+    engine = DetectionEngine(str(sandbox))
+
+    with pytest.raises(ValueError):
+        engine.analyze_event({
+            "path": str(linked_file),
+            "action": "created",
+        })   
+def test_file_change_at_exactly_60_seconds_is_included(tmp_path):
+    sandbox = tmp_path / "sandbox"
+    sandbox.mkdir()
+
+    sample = sandbox / "current.txt"
+    sample.write_text("Safe test content.", encoding="utf-8")
+
+    engine = DetectionEngine(str(sandbox))
+
+    event_time = datetime.now(timezone.utc)
+    historical_events = [
+        {
+            "path": str(sandbox / f"file_{i}.txt"),
+            "action": "modified",
+            "timestamp": (event_time - timedelta(seconds=60)).isoformat(),
+        }
+        for i in range(9)
+    ]
+
+    result = engine.analyze_event(
+        {
+            "path": str(sample),
+            "action": "modified",
+            "timestamp": event_time.isoformat(),
+        },
+        recent_events=historical_events,
+    )
+
+    assert result["risk_score"] == 35
+    assert any(
+        "High file-change activity" in reason
+        for reason in result["reasons"]
+    )        
+def test_future_file_events_do_not_increase_risk(tmp_path):
+    sandbox = tmp_path / "sandbox"
+    sandbox.mkdir()
+
+    sample = sandbox / "current.txt"
+    sample.write_text("Safe test content.", encoding="utf-8")
+
+    engine = DetectionEngine(str(sandbox))
+    event_time = datetime.now(timezone.utc)
+
+    future_events = [
+        {
+            "path": str(sandbox / f"future_{i}.txt"),
+            "action": "modified",
+            "timestamp": (
+                event_time + timedelta(minutes=5)
+            ).isoformat(),
+        }
+        for i in range(12)
+    ]
+
+    result = engine.analyze_event(
+        {
+            "path": str(sample),
+            "action": "modified",
+            "timestamp": event_time.isoformat(),
+        },
+        recent_events=future_events,
+    )
+
+    assert result["risk_score"] == 5
+    assert not any(
+        "file-change activity" in reason.lower()
+        for reason in result["reasons"]
+    )

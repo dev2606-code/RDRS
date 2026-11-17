@@ -454,7 +454,14 @@ class DetectionEngine:
             severity = "medium"
         else:
             severity = "low"
-
+        if score >= 70:
+            severity = "critical"
+        elif score >= 40:
+            severity = "high"
+        elif score >= 20:
+            severity = "medium"
+        else:
+            severity = "low"
         return {
             "path": str(file_path),
             "action": action,
@@ -472,3 +479,13 @@ class DetectionEngine:
                 "No configured risk indicators matched"
             ],
         }
+    @staticmethod
+    def _get_severity(risk_score: int) -> str:
+        """Map risk score to a severity level."""
+        if risk_score >= 70:
+            return "critical"
+        if risk_score >= 40:
+            return "high"
+        if risk_score >= 20:
+            return "medium"
+        return "low" 
