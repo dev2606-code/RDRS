@@ -257,3 +257,128 @@ def test_same_record_id_on_different_computers_is_accepted():
 
     assert first.json()["duplicate"] is False
     assert second.json()["duplicate"] is False
+
+def test_sysmon_provider_failure_does_not_record_receipt(monkeypatch):
+    xml = make_sysmon_xml(
+        1,
+        record_id=6001,
+    )
+
+    def failing_ingest(xml_event):
+        raise ValueError("Simulated provider failure")
+
+    monkeypatch.setattr(
+        sysmon_provider,
+        "ingest_sysmon_event",
+        failing_ingest,
+    )
+
+    first = client.post(
+        "/api/sysmon/events",
+        json={"xml_event": xml},
+    )
+
+    assert first.status_code == 422
+    assert first.json()["detail"] == "Simulated provider failure"
+
+    # Restore provider and retry the same event.
+    monkeypatch.undo()
+
+    second = client.post(
+        "/api/sysmon/events",
+        json={"xml_event": xml},
+    )
+
+    assert second.status_code == 200
+    assert second.json()["accepted"] is True
+    assert second.json()["duplicate"] is False
+
+def test_sysmon_receipt_failure_returns_server_error(monkeypatch):
+    xml = make_sysmon_xml(
+        1,
+        record_id=6002,
+    )
+
+    def failing_record(**kwargs):
+        raise RuntimeError("Simulated database failure")
+
+    monkeypatch.setattr(
+        routes.service.database,
+        "record_sysmon_event",
+        failing_record,
+    )
+
+    response = client.post(
+        "/api/sysmon/events",
+        json={"xml_event": xml},
+    )
+
+    assert response.status_code == 500
+
+def test_sysmon_provider_failure_does_not_record_receipt(monkeypatch):
+    xml = make_sysmon_xml(
+        1,
+        record_id=6001,
+    )
+
+    original_ingest = sysmon_provider.ingest_sysmon_event
+
+    def failing_ingest(xml_event):
+        raise ValueError("Simulated provider failure")
+
+    monkeypatch.setattr(
+        sysmon_provider,
+        "ingest_sysmon_event",
+        failing_ingest,
+    )
+
+    first = client.post(
+        "/api/sysmon/events",
+        json={"xml_event": xml},
+    )
+
+    assert first.status_code == 422
+    assert first.json()["detail"] == "Simulated provider failure"
+
+    # Restore only the provider method, not the database fixture.
+    monkeypatch.setattr(
+        sysmon_provider,
+        "ingest_sysmon_event",
+        original_ingest,
+    )
+
+    second = client.post(
+        "/api/sysmon/events",
+        json={"xml_event": xml},
+    )
+
+    assert second.status_code == 200
+    assert second.json()["accepted"] is True
+    assert second.json()["duplicate"] is False
+
+def test_sysmon_receipt_failure_returns_server_error(monkeypatch):
+    xml = make_sysmon_xml(
+        1,
+        record_id=6002,
+    )
+
+    def failing_record(**kwargs):
+        raise RuntimeError("Simulated database failure")
+
+    monkeypatch.setattr(
+        routes.service.database,
+        "record_sysmon_event",
+        failing_record,
+    )
+
+    error_client = TestClient(
+        app,
+        raise_server_exceptions=False,
+    )
+
+    response = error_client.post(
+        "/api/sysmon/events",
+        json={"xml_event": xml},
+    )
+
+    assert response.status_code == 500
