@@ -1,16 +1,20 @@
-
 import json
+from io import BytesIO
+from urllib.error import HTTPError
+
 import pytest
 
 from app.attribution.sysmon_collector import (
+    PermanentSendError,
+    RetryableSendError,
     SysmonApiSender,
     SysmonBookmarkStore,
     SysmonEventCollector,
 )
+
 from app.attribution.windows_event_log import (
     WindowsSysmonEventSource,
 )
-
 
 class FakeEventSource:
     def __init__(self, records):
@@ -268,3 +272,183 @@ def test_collector_does_not_advance_memory_if_bookmark_save_fails(
         collector.poll_once()
 
     assert collector.last_record_id == 0
+def test_collector_retries_temporary_failure_then_succeeds(tmp_path):
+    class FlakySender:
+        def __init__(self):
+            self.attempts = 0
+
+        def send(self, xml):
+            self.attempts += 1
+            if self.attempts == 1:
+                raise RetryableSendError("Temporary failure")
+            return {"accepted": True}
+
+    sender = FlakySender()
+    delays = []
+
+    source = FakeEventSource([
+        {"record_id": 1, "xml": "<Event/>"},
+    ])
+
+    collector = SysmonEventCollector(
+        source,
+        sender,
+        bookmark_path=tmp_path / "bookmark.json",
+        max_retries=3,
+        initial_backoff=0.5,
+        sleep=delays.append,
+    )
+
+    result = collector.poll_once()
+
+    assert sender.attempts == 2
+    assert delays == [0.5]
+    assert result["sent"] == 1
+    assert result["last_record_id"] == 1
+
+
+def test_collector_stops_after_retry_limit(tmp_path):
+    class AlwaysFailSender:
+        def __init__(self):
+            self.attempts = 0
+
+        def send(self, xml):
+            self.attempts += 1
+            raise RetryableSendError("API unavailable")
+
+    sender = AlwaysFailSender()
+    delays = []
+    bookmark = tmp_path / "bookmark.json"
+
+    source = FakeEventSource([
+        {"record_id": 5, "xml": "<Event/>"},
+    ])
+
+    collector = SysmonEventCollector(
+        source,
+        sender,
+        bookmark_path=bookmark,
+        max_retries=2,
+        initial_backoff=0.5,
+        sleep=delays.append,
+    )
+
+    with pytest.raises(RetryableSendError):
+        collector.poll_once()
+
+    assert sender.attempts == 3
+    assert delays == [0.5, 1.0]
+    assert collector.last_record_id == 0
+    assert SysmonBookmarkStore(bookmark).load() == 0
+
+
+def test_collector_does_not_retry_permanent_failure(tmp_path):
+    class PermanentFailSender:
+        def __init__(self):
+            self.attempts = 0
+
+        def send(self, xml):
+            self.attempts += 1
+            raise PermanentSendError("Invalid request")
+
+    sender = PermanentFailSender()
+    delays = []
+    bookmark = tmp_path / "bookmark.json"
+
+    source = FakeEventSource([
+        {"record_id": 3, "xml": "<Event/>"},
+    ])
+
+    collector = SysmonEventCollector(
+        source,
+        sender,
+        bookmark_path=bookmark,
+        max_retries=3,
+        sleep=delays.append,
+    )
+
+    with pytest.raises(PermanentSendError):
+        collector.poll_once()
+
+    assert sender.attempts == 1
+    assert delays == []
+    assert collector.last_record_id == 0
+    assert SysmonBookmarkStore(bookmark).load() == 0
+
+
+def test_collector_with_zero_retries_attempts_once(tmp_path):
+    class AlwaysFailSender:
+        def __init__(self):
+            self.attempts = 0
+
+        def send(self, xml):
+            self.attempts += 1
+            raise RetryableSendError("Temporary failure")
+
+    sender = AlwaysFailSender()
+    delays = []
+
+    source = FakeEventSource([
+        {"record_id": 2, "xml": "<Event/>"},
+    ])
+
+    collector = SysmonEventCollector(
+        source,
+        sender,
+        bookmark_path=tmp_path / "bookmark.json",
+        max_retries=0,
+        sleep=delays.append,
+    )
+
+    with pytest.raises(RetryableSendError):
+        collector.poll_once()
+
+    assert sender.attempts == 1
+    assert delays == []
+    assert collector.last_record_id == 0
+
+
+def test_sender_classifies_http_503_as_retryable(monkeypatch):
+    error = HTTPError(
+        "http://localhost",
+        503,
+        "Service unavailable",
+        {},
+        BytesIO(b""),
+    )
+
+    def fake_urlopen(*args, **kwargs):
+        raise error
+
+    monkeypatch.setattr(
+        "app.attribution.sysmon_collector.urlopen",
+        fake_urlopen,
+    )
+
+    sender = SysmonApiSender("http://localhost")
+
+    with pytest.raises(RetryableSendError):
+        sender.send("<Event/>")
+
+
+def test_sender_classifies_http_422_as_permanent(monkeypatch):
+    error = HTTPError(
+        "http://localhost",
+        422,
+        "Unprocessable Entity",
+        {},
+        BytesIO(b""),
+    )
+
+    def fake_urlopen(*args, **kwargs):
+        raise error
+
+    monkeypatch.setattr(
+        "app.attribution.sysmon_collector.urlopen",
+        fake_urlopen,
+    )
+
+    sender = SysmonApiSender("http://localhost")
+
+    with pytest.raises(PermanentSendError):
+        sender.send("<Event/>")
