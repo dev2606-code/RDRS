@@ -111,3 +111,53 @@ def test_process_metadata_is_included_in_incidents(tmp_path):
     assert incidents[0]["process_name"] == "sample.exe"
     assert incidents[0]["process_path"] == "C:/sample.exe"
     assert incidents[0]["username"] == "test-user"
+
+
+def test_sysmon_event_receipt_prevents_duplicate_claims(tmp_path):
+    database = EventDatabase(str(tmp_path / "test.db"))
+
+    first_result = database.record_sysmon_event(
+        computer="TEST-PC",
+        channel="Microsoft-Windows-Sysmon/Operational",
+        record_id=100,
+        event_id=1,
+    )
+
+    second_result = database.record_sysmon_event(
+        computer="TEST-PC",
+        channel="Microsoft-Windows-Sysmon/Operational",
+        record_id=100,
+        event_id=1,
+    )
+
+    assert first_result is True
+    assert second_result is False
+
+
+def test_sysmon_receipts_use_computer_and_channel_identity(tmp_path):
+    database = EventDatabase(str(tmp_path / "test.db"))
+
+    first = database.record_sysmon_event(
+        computer="TEST-PC-1",
+        channel="Microsoft-Windows-Sysmon/Operational",
+        record_id=100,
+        event_id=1,
+    )
+
+    second = database.record_sysmon_event(
+        computer="TEST-PC-2",
+        channel="Microsoft-Windows-Sysmon/Operational",
+        record_id=100,
+        event_id=1,
+    )
+
+    third = database.record_sysmon_event(
+        computer="TEST-PC-1",
+        channel="Another-Sysmon-Channel",
+        record_id=100,
+        event_id=1,
+    )
+
+    assert first is True
+    assert second is True
+    assert third is True

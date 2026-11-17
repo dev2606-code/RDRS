@@ -1,22 +1,27 @@
+
 import os
 from pathlib import Path
+from threading import Lock
+
 from pydantic import BaseModel
 from fastapi import APIRouter, HTTPException, Query
+
 from app.attribution.windows import WindowsProcessAttributionProvider
 from app.core.rdrs_service import RDRSService
-from threading import Lock
-sysmon_provider = WindowsProcessAttributionProvider()
-sysmon_ingest_lock = Lock()
+
+
 router = APIRouter(prefix="/api", tags=["RDRS"])
 
 sysmon_provider = WindowsProcessAttributionProvider()
+sysmon_ingest_lock = Lock()
 
 service = RDRSService(
     attribution_provider=sysmon_provider,
 )
+
+
 class SysmonEventRequest(BaseModel):
     xml_event: str
-
 
 @router.get("/health")
 def health():
