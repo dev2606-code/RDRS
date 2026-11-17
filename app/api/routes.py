@@ -4,7 +4,9 @@ from pydantic import BaseModel
 from fastapi import APIRouter, HTTPException, Query
 from app.attribution.windows import WindowsProcessAttributionProvider
 from app.core.rdrs_service import RDRSService
-
+from threading import Lock
+sysmon_provider = WindowsProcessAttributionProvider()
+sysmon_ingest_lock = Lock()
 router = APIRouter(prefix="/api", tags=["RDRS"])
 
 sysmon_provider = WindowsProcessAttributionProvider()
@@ -141,6 +143,7 @@ def update_incident(incident_id: int, update: IncidentUpdate):
         raise HTTPException(status_code=404, detail="Incident not found")
 
     return {"message": "Incident updated successfully", "incident": incident}
+
 @router.post("/sysmon/events")
 def ingest_sysmon_event(payload: SysmonEventRequest):
     from app.attribution.sysmon_parser import parse_sysmon_event
@@ -151,15 +154,60 @@ def ingest_sysmon_event(payload: SysmonEventRequest):
         if parsed is None:
             return {
                 "accepted": False,
+                "duplicate": False,
                 "message": "Unsupported Sysmon event ID",
             }
 
-        result = sysmon_provider.ingest_sysmon_event(
-            payload.xml_event
-        )
+        computer = parsed.get("computer")
+        channel = parsed.get("channel")
+        record_id = parsed.get("record_id")
+
+        if not computer or not channel or record_id is None:
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    "Sysmon event is missing required identity fields: "
+                    "Computer, Channel, EventRecordID"
+                ),
+            )
+
+        with sysmon_ingest_lock:
+            if service.database.has_sysmon_event(
+                computer,
+                channel,
+                record_id,
+            ):
+                return {
+                    "accepted": True,
+                    "duplicate": True,
+                    "event_id": parsed["event_id"],
+                    "message": "Sysmon event already processed",
+                    "correlated_metadata": None,
+                }
+
+            result = sysmon_provider.ingest_sysmon_event(
+                payload.xml_event
+            )
+
+            recorded = service.database.record_sysmon_event(
+                computer=computer,
+                channel=channel,
+                record_id=record_id,
+                event_id=parsed["event_id"],
+            )
+
+            if not recorded:
+                return {
+                    "accepted": True,
+                    "duplicate": True,
+                    "event_id": parsed["event_id"],
+                    "message": "Sysmon event already processed",
+                    "correlated_metadata": None,
+                }
 
         return {
             "accepted": True,
+            "duplicate": False,
             "event_id": parsed["event_id"],
             "message": "Sysmon event processed successfully",
             "correlated_metadata": result,

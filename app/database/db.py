@@ -71,6 +71,7 @@ class EventDatabase:
             )
             reasons_type = "JSONB NOT NULL"
             process_id_type = "BIGINT"
+            record_id_type = "BIGINT"
         else:
             id_type = "INTEGER PRIMARY KEY AUTOINCREMENT"
             event_id_type = "INTEGER"
@@ -79,6 +80,7 @@ class EventDatabase:
             )
             reasons_type = "TEXT NOT NULL"
             process_id_type = "INTEGER"
+            record_id_type = "INTEGER"
 
         with self._connect() as connection:
             connection.execute(f"""
@@ -110,6 +112,17 @@ class EventDatabase:
                     notes TEXT NOT NULL DEFAULT '',
                     updated_at TIMESTAMPTZ NOT NULL
                         DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            connection.execute(f"""
+                CREATE TABLE IF NOT EXISTS sysmon_event_receipts (
+                    id {id_type},
+                    computer TEXT NOT NULL,
+                    channel TEXT NOT NULL,
+                    record_id {record_id_type} NOT NULL,
+                    event_id INTEGER NOT NULL,
+                    received_at {timestamp_type},
+                    UNIQUE (computer, channel, record_id)
                 )
             """)
 
@@ -390,3 +403,81 @@ class EventDatabase:
                 )
 
             return result
+    def has_sysmon_event(
+        self,
+        computer: str,
+        channel: str,
+        record_id: int,
+    ) -> bool:
+        """Check whether a Sysmon event was already processed."""
+
+        placeholder = "%s" if self.use_postgres else "?"
+
+        with self._connect() as connection:
+            row = connection.execute(
+                f"""
+                SELECT 1
+                FROM sysmon_event_receipts
+                WHERE computer = {placeholder}
+                  AND channel = {placeholder}
+                  AND record_id = {placeholder}
+                LIMIT 1
+                """,
+                (computer, channel, record_id),
+            ).fetchone()
+
+        return row is not None
+
+    def record_sysmon_event(
+        self,
+        computer: str,
+        channel: str,
+        record_id: int,
+        event_id: int,
+    ) -> bool:
+        """Record a processed Sysmon event exactly once in the receipt table."""
+
+        if not computer.strip() or not channel.strip():
+            raise ValueError("Computer and channel are required")
+
+        if record_id < 0:
+            raise ValueError("Record ID cannot be negative")
+
+        with self.lock, self._connect() as connection:
+            if self.use_postgres:
+                row = connection.execute("""
+                    INSERT INTO sysmon_event_receipts (
+                        computer,
+                        channel,
+                        record_id,
+                        event_id
+                    )
+                    VALUES (%s, %s, %s, %s)
+                    ON CONFLICT (computer, channel, record_id)
+                    DO NOTHING
+                    RETURNING id
+                """, (
+                    computer,
+                    channel,
+                    record_id,
+                    event_id,
+                )).fetchone()
+
+                return row is not None
+
+            cursor = connection.execute("""
+                INSERT OR IGNORE INTO sysmon_event_receipts (
+                    computer,
+                    channel,
+                    record_id,
+                    event_id
+                )
+                VALUES (?, ?, ?, ?)
+            """, (
+                computer,
+                channel,
+                record_id,
+                event_id,
+            ))
+
+            return cursor.rowcount == 1

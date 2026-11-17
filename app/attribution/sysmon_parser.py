@@ -1,3 +1,4 @@
+\
 """Parse Windows Sysmon XML events safely."""
 
 import xml.etree.ElementTree as ET
@@ -22,6 +23,22 @@ def _get_process_id(value: str | None) -> int | None:
             return None
 
 
+def _get_record_id(value: str | None) -> int | None:
+    """Parse a non-negative Windows EventRecordID."""
+    if value is None or not value.strip():
+        return None
+
+    try:
+        record_id = int(value.strip(), 10)
+    except ValueError as exc:
+        raise ValueError("Invalid Sysmon EventRecordID") from exc
+
+    if record_id < 0:
+        raise ValueError("Sysmon EventRecordID cannot be negative")
+
+    return record_id
+
+
 def parse_sysmon_event(xml_event: str) -> dict[str, Any] | None:
     """Parse Sysmon Process Create and File Create XML events."""
 
@@ -32,6 +49,9 @@ def parse_sysmon_event(xml_event: str) -> dict[str, Any] | None:
 
     event_id = None
     timestamp = None
+    computer = None
+    channel = None
+    record_id = None
     event_data = {}
 
     for element in root.iter():
@@ -40,11 +60,20 @@ def parse_sysmon_event(xml_event: str) -> dict[str, Any] | None:
         if tag == "EventID" and element.text:
             try:
                 event_id = int(element.text.strip())
-            except ValueError:
-                raise ValueError("Invalid Sysmon Event ID")
+            except ValueError as exc:
+                raise ValueError("Invalid Sysmon Event ID") from exc
 
         elif tag == "TimeCreated":
             timestamp = element.attrib.get("SystemTime")
+
+        elif tag == "Computer":
+            computer = (element.text or "").strip() or None
+
+        elif tag == "Channel":
+            channel = (element.text or "").strip() or None
+
+        elif tag == "EventRecordID":
+            record_id = _get_record_id(element.text)
 
         elif tag == "Data":
             name = element.attrib.get("Name")
@@ -60,6 +89,9 @@ def parse_sysmon_event(xml_event: str) -> dict[str, Any] | None:
     return {
         "event_id": event_id,
         "timestamp": timestamp,
+        "computer": computer,
+        "channel": channel,
+        "record_id": record_id,
         "process_guid": event_data.get("ProcessGuid") or None,
         "process_id": _get_process_id(
             event_data.get("ProcessId")
