@@ -2,16 +2,18 @@ import os
 from pathlib import Path
 from pydantic import BaseModel
 from fastapi import APIRouter, HTTPException, Query
-
+from app.attribution.windows import WindowsProcessAttributionProvider
 from app.core.rdrs_service import RDRSService
 
 router = APIRouter(prefix="/api", tags=["RDRS"])
 
-service = RDRSService()
+sysmon_provider = WindowsProcessAttributionProvider()
 
-class IncidentUpdate(BaseModel):
-    status: str
-    notes: str = ""
+service = RDRSService(
+    attribution_provider=sysmon_provider,
+)
+class SysmonEventRequest(BaseModel):
+    xml_event: str
 
 
 @router.get("/health")
@@ -139,3 +141,32 @@ def update_incident(incident_id: int, update: IncidentUpdate):
         raise HTTPException(status_code=404, detail="Incident not found")
 
     return {"message": "Incident updated successfully", "incident": incident}
+@router.post("/sysmon/events")
+def ingest_sysmon_event(payload: SysmonEventRequest):
+    from app.attribution.sysmon_parser import parse_sysmon_event
+
+    try:
+        parsed = parse_sysmon_event(payload.xml_event)
+
+        if parsed is None:
+            return {
+                "accepted": False,
+                "message": "Unsupported Sysmon event ID",
+            }
+
+        result = sysmon_provider.ingest_sysmon_event(
+            payload.xml_event
+        )
+
+        return {
+            "accepted": True,
+            "event_id": parsed["event_id"],
+            "message": "Sysmon event processed successfully",
+            "correlated_metadata": result,
+        }
+
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail=str(exc),
+        ) from exc
