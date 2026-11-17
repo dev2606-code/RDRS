@@ -25,3 +25,17 @@ def test_entropy_is_between_zero_and_eight(tmp_path: Path):
     result = calculate_entropy(str(file_path))
 
     assert 0.0 <= result <= 8.0
+def test_uniform_byte_distribution_has_maximum_entropy(tmp_path: Path):
+    file_path = tmp_path / "uniform.bin"
+    file_path.write_bytes(bytes(range(256)) * 10)
+
+    assert calculate_entropy(str(file_path)) == 8.0
+
+
+def test_entropy_uses_only_configured_sample_size(tmp_path: Path):
+    file_path = tmp_path / "sample.bin"
+    file_path.write_bytes(b"A" * 100 + bytes(range(256)))
+
+    result = calculate_entropy(str(file_path), sample_size=100)
+
+    assert result == 0.0
