@@ -1,6 +1,6 @@
 
 """Correlate Sysmon process and file events safely."""
-
+import math
 from datetime import datetime, timezone
 from typing import Any
 
@@ -15,7 +15,6 @@ METADATA_FIELDS = (
 
 def _parse_timestamp(value: Any) -> datetime | None:
     """Parse an ISO timestamp and normalize it to UTC."""
-
     if not isinstance(value, str) or not value.strip():
         return None
 
@@ -24,7 +23,6 @@ def _parse_timestamp(value: Any) -> datetime | None:
             value.strip().replace("Z", "+00:00")
         )
 
-        # Reject timestamps without timezone information.
         if parsed.tzinfo is None:
             return None
 
@@ -36,7 +34,6 @@ def _parse_timestamp(value: Any) -> datetime | None:
 
 def _normalize_guid(value: Any) -> str | None:
     """Normalize a Sysmon ProcessGuid without guessing its identity."""
-
     if not isinstance(value, str):
         return None
 
@@ -51,23 +48,33 @@ def _normalize_guid(value: Any) -> str | None:
 class SysmonEventCorrelator:
     """Correlate file events with process creation events by ProcessGuid."""
 
-    def __init__(self, max_processes: int = 10000):
+    def __init__(
+        self,
+        max_processes: int = 10000,
+        max_age_seconds: int = 300,
+    ):
         if (
             not isinstance(max_processes, int)
             or isinstance(max_processes, bool)
             or max_processes < 1
         ):
             raise ValueError("max_processes must be a positive integer")
-
+        if (
+            not isinstance(max_age_seconds, (int, float))
+            or isinstance(max_age_seconds, bool)
+            or not math.isfinite(max_age_seconds)
+            or max_age_seconds <= 0
+        ):
+            raise ValueError("max_age_seconds must be a positive finite number")
         self.max_processes = max_processes
+        self.max_age_seconds = max_age_seconds
         self._processes: dict[str, dict[str, Any]] = {}
 
     def add_event(
         self,
         event: dict[str, Any],
     ) -> dict[str, Any] | None:
-        """Cache valid process events and attribute file events."""
-
+        """Cache valid process events and safely attribute file events."""
         if not isinstance(event, dict):
             return None
 
@@ -85,24 +92,19 @@ class SysmonEventCorrelator:
             if process_guid is None:
                 return None
 
-            # Only cache process events with valid timestamps.
             if _parse_timestamp(event.get("timestamp")) is None:
                 return None
 
             self._processes.pop(process_guid, None)
             self._processes[process_guid] = dict(event)
 
-            # Bound memory usage using least-recently-added eviction.
             while len(self._processes) > self.max_processes:
                 oldest_guid = next(iter(self._processes))
                 del self._processes[oldest_guid]
 
             return None
 
-        if event_id != 11:
-            return None
-
-        if process_guid is None:
+        if event_id != 11 or process_guid is None:
             return None
 
         result = {
@@ -120,12 +122,13 @@ class SysmonEventCorrelator:
         )
         file_time = _parse_timestamp(event.get("timestamp"))
 
-        # Never attribute using missing, invalid, or future timestamps.
-        if (
-            process_time is None
-            or file_time is None
-            or process_time > file_time
-        ):
+        if process_time is None or file_time is None:
+            return result
+
+        age_seconds = (file_time - process_time).total_seconds()
+
+        # Reject future and stale process events.
+        if age_seconds < 0 or age_seconds > self.max_age_seconds:
             return result
 
         # Preserve metadata supplied directly by the file event.

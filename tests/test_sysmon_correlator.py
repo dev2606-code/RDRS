@@ -1,4 +1,4 @@
-from app.attribution.sysmon_correlator import SysmonEventCorrelator
+
 from app.attribution.sysmon_correlator import SysmonEventCorrelator
 
 PROCESS_TIME = "2026-11-05T10:00:00.000Z"
@@ -246,3 +246,64 @@ def test_rejects_invalid_cache_capacity():
         except ValueError:
             continue
         raise AssertionError(f"Expected ValueError for {value!r}")
+
+def test_does_not_correlate_stale_process_event():
+    correlator = SysmonEventCorrelator(max_age_seconds=300)
+
+    correlator.add_event(make_event(
+        1,
+        process_guid="{GUID-STALE}",
+        process_name="old.exe",
+        timestamp="2026-11-05T10:00:00.000Z",
+    ))
+
+    result = correlator.add_event(make_event(
+        11,
+        process_guid="{GUID-STALE}",
+        timestamp="2026-11-05T10:06:00.000Z",
+    ))
+
+    assert result["process_name"] is None
+
+
+def test_correlates_process_event_within_maximum_age():
+    correlator = SysmonEventCorrelator(max_age_seconds=300)
+
+    correlator.add_event(make_event(
+        1,
+        process_guid="{GUID-RECENT}",
+        process_name="cmd.exe",
+        timestamp="2026-11-05T10:00:00.000Z",
+    ))
+
+    result = correlator.add_event(make_event(
+        11,
+        process_guid="{GUID-RECENT}",
+        timestamp="2026-11-05T10:04:00.000Z",
+    ))
+
+    assert result["process_name"] == "cmd.exe"
+
+
+def test_rejects_invalid_maximum_age():
+    for value in (0, -1, True, "300", None):
+        try:
+            SysmonEventCorrelator(max_age_seconds=value)
+        except ValueError:
+            continue
+
+        raise AssertionError(
+            f"Expected ValueError for {value!r}"
+        )
+def test_rejects_non_finite_maximum_age():
+    import math
+
+    for value in (math.nan, math.inf, -math.inf):
+        try:
+            SysmonEventCorrelator(max_age_seconds=value)
+        except ValueError:
+            continue
+
+        raise AssertionError(
+            f"Expected ValueError for {value!r}"
+        )
