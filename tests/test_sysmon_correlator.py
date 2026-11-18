@@ -1,5 +1,5 @@
 from app.attribution.sysmon_correlator import SysmonEventCorrelator
-
+from app.attribution.sysmon_correlator import SysmonEventCorrelator
 
 PROCESS_TIME = "2026-11-05T10:00:00.000Z"
 FILE_TIME = "2026-11-05T10:00:05.000Z"
@@ -172,3 +172,77 @@ def test_rejects_invalid_timestamp_for_correlation():
     ))
 
     assert result["process_name"] is None
+def test_rejects_boolean_event_id():
+    correlator = SysmonEventCorrelator()
+    assert correlator.add_event(
+        make_event(True, process_guid="{GUID-123}")
+    ) is None
+
+
+def test_rejects_non_dictionary_event():
+    correlator = SysmonEventCorrelator()
+    assert correlator.add_event(None) is None
+
+
+def test_rejects_empty_process_guid():
+    correlator = SysmonEventCorrelator()
+    result = correlator.add_event(make_event(11, process_guid="   "))
+    assert result is None
+
+
+def test_process_guid_matching_is_case_insensitive():
+    correlator = SysmonEventCorrelator()
+    correlator.add_event(make_event(
+        1,
+        process_guid="{GUID-123}",
+        process_name="cmd.exe",
+        timestamp=PROCESS_TIME,
+    ))
+    result = correlator.add_event(make_event(
+        11,
+        process_guid="{guid-123}",
+        timestamp=FILE_TIME,
+    ))
+    assert result["process_name"] == "cmd.exe"
+
+
+def test_process_event_without_timezone_is_not_cached():
+    correlator = SysmonEventCorrelator()
+    correlator.add_event(make_event(
+        1,
+        process_guid="{GUID-123}",
+        process_name="cmd.exe",
+        timestamp="2026-11-05T10:00:00",
+    ))
+    result = correlator.add_event(make_event(
+        11,
+        process_guid="{GUID-123}",
+        timestamp=FILE_TIME,
+    ))
+    assert result["process_name"] is None
+
+
+def test_correlator_evicts_oldest_process_when_cache_is_full():
+    correlator = SysmonEventCorrelator(max_processes=2)
+
+    for guid in ("{GUID-1}", "{GUID-2}", "{GUID-3}"):
+        correlator.add_event(make_event(
+            1,
+            process_guid=guid,
+            process_name=f"{guid}.exe",
+            timestamp=PROCESS_TIME,
+        ))
+
+    assert len(correlator._processes) == 2
+    assert "{guid-1}" not in correlator._processes
+    assert "{guid-2}" in correlator._processes
+    assert "{guid-3}" in correlator._processes
+
+
+def test_rejects_invalid_cache_capacity():
+    for value in (0, -1, True, 1.5):
+        try:
+            SysmonEventCorrelator(max_processes=value)
+        except ValueError:
+            continue
+        raise AssertionError(f"Expected ValueError for {value!r}")

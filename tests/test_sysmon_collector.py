@@ -1,7 +1,7 @@
 import json
 from io import BytesIO
 from urllib.error import HTTPError
-
+from app.attribution.sysmon_correlator import SysmonEventCorrelator
 import pytest
 
 from app.attribution.sysmon_collector import (
