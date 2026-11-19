@@ -614,3 +614,52 @@ def test_sender_rejects_empty_xml():
 
     with pytest.raises(PermanentSendError):
         sender.send("   ")
+def test_collector_recovers_after_partial_batch_failure(tmp_path):
+    path = tmp_path / "bookmark.json"
+
+    source = FakeEventSource([
+        {"record_id": 1, "xml": "<Event>one</Event>"},
+        {"record_id": 2, "xml": "<Event>two</Event>"},
+    ])
+
+    class FailOnSecondEventSender:
+        def __init__(self):
+            self.sent = []
+
+        def send(self, xml):
+            if xml == "<Event>two</Event>":
+                raise PermanentSendError("Second event rejected")
+
+            self.sent.append(xml)
+            return {"accepted": True}
+
+    first_sender = FailOnSecondEventSender()
+
+    collector = SysmonEventCollector(
+        source,
+        first_sender,
+        bookmark_path=path,
+    )
+
+    with pytest.raises(PermanentSendError):
+        collector.poll_once()
+
+    assert first_sender.sent == ["<Event>one</Event>"]
+    assert collector.last_record_id == 1
+    assert SysmonBookmarkStore(path).load() == 1
+
+    # Simulate restart after partial batch failure.
+    retry_sender = FakeSender()
+
+    restarted = SysmonEventCollector(
+        source,
+        retry_sender,
+        bookmark_path=path,
+    )
+
+    result = restarted.poll_once()
+
+    assert retry_sender.sent == ["<Event>two</Event>"]
+    assert result["sent"] == 1
+    assert result["last_record_id"] == 2
+    assert SysmonBookmarkStore(path).load() == 2
