@@ -16,8 +16,18 @@ class WindowsSysmonEventSource:
         powershell_executable: str = "powershell.exe",
         timeout: int = 30,
     ):
-        if timeout < 1:
-            raise ValueError("timeout must be positive")
+        if (
+            not isinstance(timeout, int)
+            or isinstance(timeout, bool)
+            or timeout < 1
+        ):
+            raise ValueError("timeout must be a positive integer")
+
+        if (
+            not isinstance(powershell_executable, str)
+            or not powershell_executable.strip()
+        ):
+            raise ValueError("powershell_executable must be a non-empty string")
 
         self.powershell_executable = powershell_executable
         self.timeout = timeout
@@ -29,11 +39,19 @@ class WindowsSysmonEventSource:
     ) -> list[dict[str, Any]]:
         """Read events newer than the supplied Windows record ID."""
 
-        if after_record_id < 0:
-            raise ValueError("after_record_id cannot be negative")
+        if (
+            not isinstance(after_record_id, int)
+            or isinstance(after_record_id, bool)
+            or after_record_id < 0
+        ):
+            raise ValueError("after_record_id must be a non-negative integer")
 
-        if not 1 <= limit <= 1000:
-            raise ValueError("limit must be between 1 and 1000")
+        if (
+            not isinstance(limit, int)
+            or isinstance(limit, bool)
+            or not 1 <= limit <= 1000
+        ):
+            raise ValueError("limit must be an integer between 1 and 1000")
 
         if os.name != "nt":
             raise RuntimeError(
@@ -47,14 +65,13 @@ class WindowsSysmonEventSource:
 
         script = f"""
 $ErrorActionPreference = 'Stop'
-
 try {{
- $events = @(Get-WinEvent `
-    -LogName '{SYSMON_LOG}' `
-    -FilterXPath '{xpath}' `
-    -MaxEvents {limit} `
-    -Oldest `
-    -ErrorAction Stop)
+    $events = @(Get-WinEvent `
+        -LogName '{SYSMON_LOG}' `
+        -FilterXPath '{xpath}' `
+        -MaxEvents {limit} `
+        -Oldest `
+        -ErrorAction Stop)
 }}
 catch {{
     if ($_.FullyQualifiedErrorId -like '*NoMatchingEventsFound*') {{
@@ -63,7 +80,6 @@ catch {{
     }}
     throw
 }}
-
 $items = @(
     $events |
     Sort-Object RecordId |
@@ -74,23 +90,31 @@ $items = @(
         }}
     }}
 )
-
 ConvertTo-Json -InputObject $items -Compress -Depth 3
 """
 
-        completed = subprocess.run(
-            [
-                self.powershell_executable,
-                "-NoProfile",
-                "-NonInteractive",
-                "-Command",
-                script,
-            ],
-            capture_output=True,
-            text=True,
-            timeout=self.timeout,
-            check=False,
-        )
+        try:
+            completed = subprocess.run(
+                [
+                    self.powershell_executable,
+                    "-NoProfile",
+                    "-NonInteractive",
+                    "-Command",
+                    script,
+                ],
+                capture_output=True,
+                text=True,
+                timeout=self.timeout,
+                check=False,
+            )
+        except subprocess.TimeoutExpired as exc:
+            raise RuntimeError(
+                f"Sysmon Event Log query timed out after {self.timeout} seconds"
+            ) from exc
+        except OSError as exc:
+            raise RuntimeError(
+                f"PowerShell execution failed: {exc}"
+            ) from exc
 
         if completed.returncode != 0:
             raise RuntimeError(
