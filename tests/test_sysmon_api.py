@@ -382,3 +382,60 @@ def test_sysmon_receipt_failure_returns_server_error(monkeypatch):
     )
 
     assert response.status_code == 500
+def test_sysmon_event_can_retry_after_provider_failure(monkeypatch):
+    xml = make_sysmon_xml(
+        1,
+        record_id=6001,
+        computer="DESKTOP-RETRY",
+    )
+
+    original_ingest = sysmon_provider.ingest_sysmon_event
+    calls = []
+
+    def failing_ingest(xml_event):
+        calls.append("failed")
+        raise RuntimeError("Simulated temporary provider failure")
+
+    monkeypatch.setattr(
+        sysmon_provider,
+        "ingest_sysmon_event",
+        failing_ingest,
+    )
+
+    with pytest.raises(RuntimeError, match="temporary provider failure"):
+        client.post(
+            "/api/sysmon/events",
+            json={"xml_event": xml},
+        )
+
+    # The failed attempt must not create a processed-event receipt.
+    assert routes.service.database.has_sysmon_event(
+        "DESKTOP-RETRY",
+        "Microsoft-Windows-Sysmon/Operational",
+        6001,
+    ) is False
+
+    # Restore the provider and retry the same event.
+    monkeypatch.setattr(
+        sysmon_provider,
+        "ingest_sysmon_event",
+        original_ingest,
+    )
+
+    retry = client.post(
+        "/api/sysmon/events",
+        json={"xml_event": xml},
+    )
+
+    assert retry.status_code == 200
+    assert retry.json()["accepted"] is True
+    assert retry.json()["duplicate"] is False
+    assert retry.json()["event_id"] == 1
+
+    assert routes.service.database.has_sysmon_event(
+        "DESKTOP-RETRY",
+        "Microsoft-Windows-Sysmon/Operational",
+        6001,
+    ) is True
+
+    assert len(calls) == 1

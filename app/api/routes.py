@@ -22,7 +22,9 @@ service = RDRSService(
 
 class SysmonEventRequest(BaseModel):
     xml_event: str
-
+class IncidentUpdate(BaseModel):
+    status: str
+    notes: str = ""
 @router.get("/health")
 def health():
     return {"status": "healthy", "service": "RDRS"}
