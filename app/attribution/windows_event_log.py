@@ -27,7 +27,9 @@ class WindowsSysmonEventSource:
             not isinstance(powershell_executable, str)
             or not powershell_executable.strip()
         ):
-            raise ValueError("powershell_executable must be a non-empty string")
+            raise ValueError(
+                "powershell_executable must be a non-empty string"
+            )
 
         self.powershell_executable = powershell_executable
         self.timeout = timeout
@@ -44,14 +46,18 @@ class WindowsSysmonEventSource:
             or isinstance(after_record_id, bool)
             or after_record_id < 0
         ):
-            raise ValueError("after_record_id must be a non-negative integer")
+            raise ValueError(
+                "after_record_id must be a non-negative integer"
+            )
 
         if (
             not isinstance(limit, int)
             or isinstance(limit, bool)
             or not 1 <= limit <= 1000
         ):
-            raise ValueError("limit must be an integer between 1 and 1000")
+            raise ValueError(
+                "limit must be an integer between 1 and 1000"
+            )
 
         if os.name != "nt":
             raise RuntimeError(
@@ -107,10 +113,13 @@ ConvertTo-Json -InputObject $items -Compress -Depth 3
                 timeout=self.timeout,
                 check=False,
             )
+
         except subprocess.TimeoutExpired as exc:
             raise RuntimeError(
-                f"Sysmon Event Log query timed out after {self.timeout} seconds"
+                f"Sysmon Event Log query timed out "
+                f"after {self.timeout} seconds"
             ) from exc
+
         except OSError as exc:
             raise RuntimeError(
                 f"PowerShell execution failed: {exc}"
@@ -123,7 +132,10 @@ ConvertTo-Json -InputObject $items -Compress -Depth 3
             )
 
         try:
-            records = json.loads(completed.stdout or "[]")
+            records = json.loads(
+                completed.stdout or "[]"
+            )
+
         except json.JSONDecodeError as exc:
             raise ValueError(
                 "Invalid response from Windows Event Log"
@@ -133,13 +145,18 @@ ConvertTo-Json -InputObject $items -Compress -Depth 3
             records = [records]
 
         if not isinstance(records, list):
-            raise ValueError("Expected a list of Sysmon records")
+            raise ValueError(
+                "Expected a list of Sysmon records"
+            )
 
         validated = []
+        seen_ids = set()
 
         for record in records:
             if not isinstance(record, dict):
-                raise ValueError("Invalid Sysmon record")
+                raise ValueError(
+                    "Invalid Sysmon record"
+                )
 
             record_id = record.get("record_id")
             xml = record.get("xml")
@@ -149,10 +166,24 @@ ConvertTo-Json -InputObject $items -Compress -Depth 3
                 or isinstance(record_id, bool)
                 or record_id <= after_record_id
             ):
-                raise ValueError("Invalid Sysmon record ID")
+                raise ValueError(
+                    "Invalid Sysmon record ID"
+                )
 
-            if not isinstance(xml, str) or not xml.strip():
-                raise ValueError("Missing Sysmon XML")
+            if record_id in seen_ids:
+                raise ValueError(
+                    f"Duplicate record_id: {record_id}"
+                )
+
+            seen_ids.add(record_id)
+
+            if (
+                not isinstance(xml, str)
+                or not xml.strip()
+            ):
+                raise ValueError(
+                    "Missing Sysmon XML"
+                )
 
             validated.append({
                 "record_id": record_id,

@@ -818,3 +818,23 @@ def test_service_correlates_historical_file_moves(tmp_path):
     )
 
     assert len(service.list_events()) == 6
+@pytest.mark.parametrize("timestamp", [True, False])
+def test_boolean_timestamps_are_rejected(timestamp):
+    assert DetectionEngine._parse_timestamp(timestamp) is None
+def test_detection_result_includes_structured_indicators(tmp_path):
+    sandbox = tmp_path / "sandbox"
+    sandbox.mkdir()
+
+    engine = DetectionEngine(str(sandbox))
+
+    result = engine.analyze_event(
+        {
+            "path": str(sandbox / "sample.locked"),
+            "action": "created",
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        }
+    )
+
+    assert "suspicious_extension" in result["indicators"]
+    assert "file_created" in result["indicators"]
+    assert "Suspicious file extension detected: .locked" in result["reasons"]

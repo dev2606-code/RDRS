@@ -39,3 +39,21 @@ def test_entropy_uses_only_configured_sample_size(tmp_path: Path):
     result = calculate_entropy(str(file_path), sample_size=100)
 
     assert result == 0.0
+import pytest
+
+@pytest.mark.parametrize(
+    "sample_size",
+    [0, -1, True, False, 1.5, "65536", None],
+)
+def test_calculate_entropy_rejects_invalid_sample_size(
+    tmp_path,
+    sample_size,
+):
+    file_path = tmp_path / "sample.bin"
+    file_path.write_bytes(b"test data")
+
+    with pytest.raises(ValueError):
+        calculate_entropy(
+            str(file_path),
+            sample_size=sample_size,
+        )

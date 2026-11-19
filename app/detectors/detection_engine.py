@@ -44,11 +44,21 @@ class DetectionEngine:
                 "file change activity",
             ),
         }
-
+        self.indicator_id_categories = {
+            "high_entropy": "entropy",
+            "rapid_file_rename": "renaming",
+            "suspicious_extension": "extension",
+            "suspicious_extension_burst": "extension",
+            "multiple_suspicious_extensions": "extension",
+            "elevated_file_change_activity": "file_changes",
+            "high_file_change_activity": "file_changes",
+        }
     @staticmethod
     def _parse_timestamp(
         timestamp: Any,
     ) -> datetime | None:
+        if isinstance(timestamp, bool):
+            return None
         """Convert supported timestamps into timezone-aware UTC datetimes."""
 
         if timestamp is None or timestamp == "":
@@ -215,14 +225,14 @@ class DetectionEngine:
                 suspicious_paths.add(str(event_path))
 
         return len(suspicious_paths)
-
     def _count_correlated_indicators(
         self,
         recent_events: list[dict[str, Any]],
         current_reasons: list[str],
         current_time: datetime,
+        current_indicators: list[str] | None = None,
     ) -> int:
-        """Count distinct ransomware-risk indicator categories."""
+        """Count distinct risk categories using IDs or legacy reasons."""
 
         cutoff = current_time - timedelta(
             seconds=self.WINDOW_SECONDS
@@ -230,22 +240,28 @@ class DetectionEngine:
 
         found_indicators = set()
 
-        def collect_indicators(
-            reasons: list[str],
-        ) -> None:
+        def collect_ids(indicators: list[str]) -> None:
+            for indicator_id in indicators:
+                category = self.indicator_id_categories.get(
+                    indicator_id
+                )
+                if category:
+                    found_indicators.add(category)
+
+        def collect_legacy_reasons(reasons: list[str]) -> None:
             for reason in reasons:
                 reason_lower = str(reason).lower()
 
-                for category, keywords in (
-                    self.indicator_keywords.items()
-                ):
+                for category, keywords in self.indicator_keywords.items():
                     if any(
                         keyword in reason_lower
                         for keyword in keywords
                     ):
                         found_indicators.add(category)
 
-        collect_indicators(current_reasons)
+        # Current event: structured IDs are preferred.
+        collect_ids(current_indicators or [])
+        collect_legacy_reasons(current_reasons)
 
         for item in recent_events:
             event_time = self._parse_timestamp(
@@ -261,16 +277,22 @@ class DetectionEngine:
             if self._event_path(item) is None:
                 continue
 
+            historical_ids = item.get("indicators")
+
+            if isinstance(historical_ids, list):
+                collect_ids(historical_ids)
+
+            # Keep backward compatibility for previously stored events.
             reasons = item.get("reasons") or []
 
             if isinstance(reasons, str):
                 reasons = [reasons]
 
             if isinstance(reasons, list):
-                collect_indicators(reasons)
+                collect_legacy_reasons(reasons)
 
         return len(found_indicators)
-
+  
     def _calculate_confidence(
         self,
         indicator_count: int,
@@ -288,7 +310,6 @@ class DetectionEngine:
             return 35, "low"
 
         return 10, "low"
-
     def analyze_event(
         self,
         event: dict[str, Any],
@@ -303,13 +324,15 @@ class DetectionEngine:
                 "File is outside the configured sandbox"
             )
 
-        action = event.get("action")
+        # Extract action from incoming event (fixes NameError).
+        action = event.get("action", "unknown")
+
         entropy = None
         reasons = []
+        indicators = []
         score = 0
 
-        # Prefer the incoming event timestamp. Fall back to UTC now
-        # when the timestamp is missing or invalid.
+        # Prefer incoming event timestamp; fall back to UTC now.
         current_time = (
             self._parse_timestamp(event.get("timestamp"))
             or datetime.now(timezone.utc)
@@ -351,6 +374,7 @@ class DetectionEngine:
         # Suspicious file extension.
         if file_path.suffix.lower() in self.suspicious_extensions:
             score += 25
+            indicators.append("suspicious_extension")
 
             reasons.append(
                 f"Suspicious file extension detected: "
@@ -372,7 +396,9 @@ class DetectionEngine:
 
                     if entropy >= 7.2 and not is_compressed_file:
                         score += 10
+                        indicators.append("high_entropy")
                         reasons.append("High file entropy")
+
                 else:
                     reasons.append(
                         "File content unavailable for entropy analysis"
@@ -387,6 +413,7 @@ class DetectionEngine:
         # Suspicious extension burst.
         if recent_suspicious_extension_count >= 5:
             score += 20
+            indicators.append("suspicious_extension_burst")
 
             reasons.append(
                 "Suspicious extension burst detected "
@@ -397,21 +424,25 @@ class DetectionEngine:
         # Normal creation and modification activity.
         if action in {"created", "modified"}:
             score += 5
+            indicators.append(f"file_{action}")
             reasons.append(f"File {action} observed")
 
         # File deletion activity.
         elif action == "deleted":
             score += 10
+            indicators.append("file_deleted")
             reasons.append("File deletion observed")
 
         # File rename activity.
         elif action == "moved":
             score += 10
+            indicators.append("file_renamed")
             reasons.append("File rename observed")
 
         # Rapid file renaming.
         if recent_move_count >= 5:
             score += 15
+            indicators.append("rapid_file_rename")
 
             reasons.append(
                 "Rapid file-rename activity "
@@ -422,6 +453,7 @@ class DetectionEngine:
         # Rapid file modification.
         if recent_change_count >= 10:
             score += 30
+            indicators.append("high_file_change_activity")
 
             reasons.append(
                 "High file-change activity "
@@ -431,6 +463,7 @@ class DetectionEngine:
 
         elif recent_change_count >= 5:
             score += 15
+            indicators.append("elevated_file_change_activity")
 
             reasons.append(
                 "Elevated file-change activity "
@@ -444,11 +477,13 @@ class DetectionEngine:
                 historical_events,
                 reasons,
                 current_time,
+                indicators,
             )
         )
 
         if correlated_indicator_count >= 3:
             score += 15
+            indicators.append("correlated_indicators")
 
             reasons.append(
                 "Correlated ransomware indicators detected "
@@ -456,6 +491,7 @@ class DetectionEngine:
                 "distinct indicators in 60 seconds)"
             )
 
+        # Cap risk score.
         score = min(score, 100)
 
         confidence_score, confidence_level = (
@@ -481,11 +517,12 @@ class DetectionEngine:
             "status": "needs_review",
             "confidence_score": confidence_score,
             "confidence_level": confidence_level,
+            "indicators": indicators,
             "reasons": reasons or [
                 "No configured risk indicators matched"
             ],
         }
-
+   
     @staticmethod
     def _get_severity(
         risk_score: int,
