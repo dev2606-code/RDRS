@@ -114,3 +114,45 @@ def test_service_continues_when_attribution_provider_fails(tmp_path):
     assert result["process_path"] is None
     assert result["username"] is None
     assert len(service.list_events()) == 1
+def test_service_correlates_historical_file_moves(tmp_path):
+    from app.core.rdrs_service import RDRSService
+
+    sandbox = tmp_path / "sandbox"
+    sandbox.mkdir()
+
+    current_file = sandbox / "current.txt"
+    current_file.write_text(
+        "Safe RDRS test data.",
+        encoding="utf-8",
+    )
+
+    service = RDRSService(
+        sandbox_directory=str(sandbox),
+        database_path=str(tmp_path / "events.db"),
+    )
+
+    # Seed five recent, harmless historical move records.
+    for index in range(5):
+        service.database.add_event({
+            "path": str(sandbox / f"historical_{index}.txt"),
+            "action": "moved",
+            "entropy": None,
+            "risk_score": 10,
+            "severity": "low",
+            "status": "needs_review",
+            "reasons": ["File rename observed"],
+        })
+
+    result = service.process_event({
+        "path": str(current_file),
+        "action": "moved",
+    })
+
+    assert result["risk_score"] == 25
+    assert result["severity"] == "medium"
+    assert any(
+        "rapid file-rename activity" in reason.lower()
+        for reason in result["reasons"]
+    )
+
+    assert len(service.list_events()) == 6

@@ -46,7 +46,9 @@ class DetectionEngine:
         }
 
     @staticmethod
-    def _parse_timestamp(timestamp: Any) -> datetime | None:
+    def _parse_timestamp(
+        timestamp: Any,
+    ) -> datetime | None:
         """Convert supported timestamps into timezone-aware UTC datetimes."""
 
         if timestamp is None or timestamp == "":
@@ -80,7 +82,10 @@ class DetectionEngine:
         except (ValueError, TypeError, OSError):
             return False
 
-    def _event_path(self, event: dict[str, Any]) -> Path | None:
+    def _event_path(
+        self,
+        event: dict[str, Any],
+    ) -> Path | None:
         """Return the primary event path when it is inside the sandbox."""
 
         path = event.get("path")
@@ -203,7 +208,10 @@ class DetectionEngine:
             if event_path is None:
                 continue
 
-            if event_path.suffix.lower() in self.suspicious_extensions:
+            if (
+                event_path.suffix.lower()
+                in self.suspicious_extensions
+            ):
                 suspicious_paths.add(str(event_path))
 
         return len(suspicious_paths)
@@ -222,11 +230,15 @@ class DetectionEngine:
 
         found_indicators = set()
 
-        def collect_indicators(reasons: list[str]) -> None:
+        def collect_indicators(
+            reasons: list[str],
+        ) -> None:
             for reason in reasons:
                 reason_lower = str(reason).lower()
 
-                for category, keywords in self.indicator_keywords.items():
+                for category, keywords in (
+                    self.indicator_keywords.items()
+                ):
                     if any(
                         keyword in reason_lower
                         for keyword in keywords
@@ -304,6 +316,7 @@ class DetectionEngine:
         )
 
         historical_events = recent_events or []
+
         current_event = {
             **event,
             "timestamp": current_time.isoformat(),
@@ -314,14 +327,18 @@ class DetectionEngine:
             current_event,
         ]
 
-        recent_change_count = self._count_recent_file_changes(
-            all_events,
-            current_time,
+        recent_change_count = (
+            self._count_recent_file_changes(
+                all_events,
+                current_time,
+            )
         )
 
-        recent_move_count = self._count_recent_file_moves(
-            all_events,
-            current_time,
+        recent_move_count = (
+            self._count_recent_file_moves(
+                all_events,
+                current_time,
+            )
         )
 
         recent_suspicious_extension_count = (
@@ -336,14 +353,17 @@ class DetectionEngine:
             score += 25
 
             reasons.append(
-                f"Suspicious file extension detected: {file_path.suffix}"
+                f"Suspicious file extension detected: "
+                f"{file_path.suffix}"
             )
 
         # File entropy.
         if action in {"created", "modified"}:
             try:
                 if file_path.is_file():
-                    entropy = calculate_entropy(str(file_path))
+                    entropy = calculate_entropy(
+                        str(file_path)
+                    )
 
                     is_compressed_file = (
                         file_path.suffix.lower()
@@ -363,6 +383,7 @@ class DetectionEngine:
                 reasons.append(
                     "File content unavailable for entropy analysis"
                 )
+
         # Suspicious extension burst.
         if recent_suspicious_extension_count >= 5:
             score += 20
@@ -394,7 +415,8 @@ class DetectionEngine:
 
             reasons.append(
                 "Rapid file-rename activity "
-                f"({recent_move_count} distinct files in 60 seconds)"
+                f"({recent_move_count} distinct files "
+                "in 60 seconds)"
             )
 
         # Rapid file modification.
@@ -403,7 +425,8 @@ class DetectionEngine:
 
             reasons.append(
                 "High file-change activity "
-                f"({recent_change_count} distinct files in 60 seconds)"
+                f"({recent_change_count} distinct files "
+                "in 60 seconds)"
             )
 
         elif recent_change_count >= 5:
@@ -411,12 +434,8 @@ class DetectionEngine:
 
             reasons.append(
                 "Elevated file-change activity "
-                f"({recent_change_count} distinct files in 60 seconds)"
-            )
-
-        if action == "deleted" and entropy is None:
-            reasons.append(
-                "File content unavailable for entropy analysis"
+                f"({recent_change_count} distinct files "
+                "in 60 seconds)"
             )
 
         # Correlation of independent indicator categories.
@@ -446,22 +465,9 @@ class DetectionEngine:
             )
         )
 
-        if score >= 70:
-            severity = "critical"
-        elif score >= 40:
-            severity = "high"
-        elif score >= 20:
-            severity = "medium"
-        else:
-            severity = "low"
-        if score >= 70:
-            severity = "critical"
-        elif score >= 40:
-            severity = "high"
-        elif score >= 20:
-            severity = "medium"
-        else:
-            severity = "low"
+        # Always calculate severity, regardless of score.
+        severity = self._get_severity(score)
+
         return {
             "path": str(file_path),
             "action": action,
@@ -479,13 +485,20 @@ class DetectionEngine:
                 "No configured risk indicators matched"
             ],
         }
+
     @staticmethod
-    def _get_severity(risk_score: int) -> str:
+    def _get_severity(
+        risk_score: int,
+    ) -> str:
         """Map risk score to a severity level."""
+
         if risk_score >= 70:
             return "critical"
+
         if risk_score >= 40:
             return "high"
+
         if risk_score >= 20:
             return "medium"
-        return "low" 
+
+        return "low"

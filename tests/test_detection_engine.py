@@ -1,4 +1,3 @@
-
 from datetime import datetime, timedelta, timezone
 import gzip
 import random
@@ -716,3 +715,106 @@ def test_future_file_events_do_not_increase_risk(tmp_path):
         "file-change activity" in reason.lower()
         for reason in result["reasons"]
     )
+def test_deleted_event_does_not_report_entropy_unavailable(tmp_path):
+    sandbox = tmp_path / "sandbox"
+    sandbox.mkdir()
+
+    engine = DetectionEngine(str(sandbox))
+
+    result = engine.analyze_event({
+        "path": str(sandbox / "deleted.txt"),
+        "action": "deleted",
+    })
+
+    assert result["entropy"] is None
+    assert result["risk_score"] == 10
+    assert "File deletion observed" in result["reasons"]
+    assert not any(
+        "content unavailable for entropy analysis" in reason.lower()
+        for reason in result["reasons"]
+    )
+def test_analyze_event_uses_severity_helper(tmp_path, monkeypatch):
+    sandbox = tmp_path / "sandbox"
+    sandbox.mkdir()
+
+    sample = sandbox / "sample.txt"
+    sample.write_text("Safe test content.", encoding="utf-8")
+
+    engine = DetectionEngine(str(sandbox))
+
+    monkeypatch.setattr(
+        engine,
+        "_count_recent_file_changes",
+        lambda *_: 0,
+    )
+    monkeypatch.setattr(
+        engine,
+        "_count_recent_file_moves",
+        lambda *_: 0,
+    )
+    monkeypatch.setattr(
+        engine,
+        "_count_recent_suspicious_extensions",
+        lambda *_: 0,
+    )
+    monkeypatch.setattr(
+        engine,
+        "_count_correlated_indicators",
+        lambda *_: 0,
+    )
+    monkeypatch.setattr(
+        engine,
+        "_get_severity",
+        lambda score: "helper-used",
+    )
+
+    result = engine.analyze_event({
+        "path": str(sample),
+        "action": "deleted",
+    })
+
+    assert result["severity"] == "helper-used"
+
+
+def test_service_correlates_historical_file_moves(tmp_path):
+    from app.core.rdrs_service import RDRSService
+
+    sandbox = tmp_path / "sandbox"
+    sandbox.mkdir()
+
+    current_file = sandbox / "current.txt"
+    current_file.write_text(
+        "Safe RDRS test data.",
+        encoding="utf-8",
+    )
+
+    service = RDRSService(
+        sandbox_directory=str(sandbox),
+        database_path=str(tmp_path / "events.db"),
+    )
+
+    # Seed five recent, harmless historical move records.
+    for index in range(5):
+        service.database.add_event({
+            "path": str(sandbox / f"historical_{index}.txt"),
+            "action": "moved",
+            "entropy": None,
+            "risk_score": 10,
+            "severity": "low",
+            "status": "needs_review",
+            "reasons": ["File rename observed"],
+        })
+
+    result = service.process_event({
+        "path": str(current_file),
+        "action": "moved",
+    })
+
+    assert result["risk_score"] == 25
+    assert result["severity"] == "medium"
+    assert any(
+        "rapid file-rename activity" in reason.lower()
+        for reason in result["reasons"]
+    )
+
+    assert len(service.list_events()) == 6
