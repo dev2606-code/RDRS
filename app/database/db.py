@@ -70,6 +70,7 @@ class EventDatabase:
                 "TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP"
             )
             reasons_type = "JSONB NOT NULL"
+            indicators_type = "JSONB NOT NULL DEFAULT '[]'::jsonb"
             process_id_type = "BIGINT"
             record_id_type = "BIGINT"
         else:
@@ -79,6 +80,7 @@ class EventDatabase:
                 "TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP"
             )
             reasons_type = "TEXT NOT NULL"
+            indicators_type = "TEXT NOT NULL DEFAULT '[]'"
             process_id_type = "INTEGER"
             record_id_type = "INTEGER"
 
@@ -94,6 +96,7 @@ class EventDatabase:
                     severity TEXT NOT NULL,
                     status TEXT NOT NULL,
                     reasons {reasons_type},
+                    indicators {indicators_type},
                     confidence_score INTEGER NOT NULL DEFAULT 10,
                     confidence_level TEXT NOT NULL DEFAULT 'low',
                     process_id {process_id_type},
@@ -114,6 +117,7 @@ class EventDatabase:
                         DEFAULT CURRENT_TIMESTAMP
                 )
             """)
+
             connection.execute(f"""
                 CREATE TABLE IF NOT EXISTS sysmon_event_receipts (
                     id {id_type},
@@ -126,8 +130,14 @@ class EventDatabase:
                 )
             """)
 
-            # Safely migrate existing databases.
+            # Safely migrate existing PostgreSQL databases.
             if self.use_postgres:
+                connection.execute("""
+                    ALTER TABLE events
+                    ADD COLUMN IF NOT EXISTS indicators
+                    JSONB NOT NULL DEFAULT '[]'::jsonb
+                """)
+
                 connection.execute("""
                     ALTER TABLE events
                     ADD COLUMN IF NOT EXISTS confidence_score
@@ -139,22 +149,27 @@ class EventDatabase:
                     ADD COLUMN IF NOT EXISTS confidence_level
                     TEXT NOT NULL DEFAULT 'low'
                 """)
+
                 connection.execute("""
                     ALTER TABLE events
                     ADD COLUMN IF NOT EXISTS process_id BIGINT
                 """)
+
                 connection.execute("""
                     ALTER TABLE events
                     ADD COLUMN IF NOT EXISTS process_name TEXT
                 """)
+
                 connection.execute("""
                     ALTER TABLE events
                     ADD COLUMN IF NOT EXISTS process_path TEXT
                 """)
+
                 connection.execute("""
                     ALTER TABLE events
                     ADD COLUMN IF NOT EXISTS username TEXT
                 """)
+
             else:
                 columns = {
                     row["name"]
@@ -183,12 +198,20 @@ class EventDatabase:
                     "process_path": "TEXT",
                     "username": "TEXT",
                 }
+
                 for column, column_type in process_columns.items():
                     if column not in columns:
                         connection.execute(
                             f"ALTER TABLE events ADD COLUMN "
                             f"{column} {column_type}"
                         )
+
+                if "indicators" not in columns:
+                    connection.execute("""
+                        ALTER TABLE events
+                        ADD COLUMN indicators
+                        TEXT NOT NULL DEFAULT '[]'
+                    """)
 
     @staticmethod
     def _json_value(value):
@@ -198,8 +221,10 @@ class EventDatabase:
 
     def add_event(self, event: dict[str, Any]) -> int:
         reasons = event.get("reasons", [])
+        indicators = event.get("indicators", [])
         confidence_score = event.get("confidence_score", 10)
         confidence_level = event.get("confidence_level", "low")
+
         process_metadata = (
             event.get("process_id"),
             event.get("process_name"),
@@ -218,6 +243,7 @@ class EventDatabase:
                         severity,
                         status,
                         reasons,
+                        indicators,
                         confidence_score,
                         confidence_level,
                         process_id,
@@ -225,7 +251,10 @@ class EventDatabase:
                         process_path,
                         username
                     )
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    VALUES (
+                        %s, %s, %s, %s, %s, %s, %s,
+                        %s, %s, %s, %s, %s, %s, %s
+                    )
                     RETURNING id
                 """, (
                     event["path"],
@@ -235,6 +264,7 @@ class EventDatabase:
                     event["severity"],
                     event["status"],
                     json.dumps(reasons),
+                    json.dumps(indicators),
                     confidence_score,
                     confidence_level,
                     *process_metadata,
@@ -259,6 +289,7 @@ class EventDatabase:
                         severity,
                         status,
                         reasons,
+                        indicators,
                         confidence_score,
                         confidence_level,
                         process_id,
@@ -266,7 +297,7 @@ class EventDatabase:
                         process_path,
                         username
                     )
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, (
                     event["path"],
                     event["action"],
@@ -275,6 +306,7 @@ class EventDatabase:
                     event["severity"],
                     event["status"],
                     json.dumps(reasons),
+                    json.dumps(indicators),
                     confidence_score,
                     confidence_level,
                     *process_metadata,
@@ -310,6 +342,9 @@ class EventDatabase:
         for row in rows:
             item = dict(row)
             item["reasons"] = self._json_value(item["reasons"])
+            item["indicators"] = self._json_value(
+                item.get("indicators", "[]")
+            )
 
             if hasattr(item.get("timestamp"), "isoformat"):
                 item["timestamp"] = item["timestamp"].isoformat(sep=" ")
@@ -341,7 +376,8 @@ class EventDatabase:
                     e.process_name,
                     e.process_path,
                     e.username,
-                    e.reasons
+                    e.reasons,
+                    e.indicators
                 FROM incidents i
                 JOIN events e ON e.id = i.event_id
                 ORDER BY i.id DESC
@@ -353,6 +389,9 @@ class EventDatabase:
         for row in rows:
             item = dict(row)
             item["reasons"] = self._json_value(item["reasons"])
+            item["indicators"] = self._json_value(
+                item.get("indicators", "[]")
+            )
 
             for field in ("timestamp", "updated_at"):
                 if hasattr(item.get(field), "isoformat"):
@@ -403,6 +442,7 @@ class EventDatabase:
                 )
 
             return result
+
     def has_sysmon_event(
         self,
         computer: str,

@@ -838,3 +838,81 @@ def test_detection_result_includes_structured_indicators(tmp_path):
     assert "suspicious_extension" in result["indicators"]
     assert "file_created" in result["indicators"]
     assert "Suspicious file extension detected: .locked" in result["reasons"]
+def test_structured_correlation_ignores_reason_wording(tmp_path):
+    sandbox = tmp_path / "sandbox"
+    sandbox.mkdir()
+
+    engine = DetectionEngine(str(sandbox))
+    now = datetime.now(timezone.utc)
+
+    recent_events = [
+        {
+            "path": str(sandbox / "file1.txt"),
+            "timestamp": now.isoformat(),
+            "indicators": ["high_entropy"],
+            "reasons": ["Completely unrelated description"],
+        },
+        {
+            "path": str(sandbox / "file2.txt"),
+            "timestamp": now.isoformat(),
+            "indicators": ["rapid_file_rename"],
+            "reasons": ["No risk mentioned here"],
+        },
+    ]
+
+    count = engine._count_correlated_indicators(
+        recent_events=recent_events,
+        current_reasons=["Ordinary activity"],
+        current_time=now,
+        current_indicators=["suspicious_extension"],
+    )
+
+    assert count == 3
+def test_empty_structured_indicators_ignore_legacy_reasons(tmp_path):
+    sandbox = tmp_path / "sandbox"
+    sandbox.mkdir()
+
+    engine = DetectionEngine(str(sandbox))
+    now = datetime.now(timezone.utc)
+
+    recent_events = [
+        {
+            "path": str(sandbox / "file1.txt"),
+            "timestamp": now.isoformat(),
+            "indicators": [],
+            "reasons": ["High file entropy"],
+        },
+    ]
+
+    count = engine._count_correlated_indicators(
+        recent_events=recent_events,
+        current_reasons=["Ordinary activity"],
+        current_time=now,
+        current_indicators=["suspicious_extension"],
+    )
+
+    assert count == 1
+def test_empty_structured_indicators_do_not_use_legacy_reasons(tmp_path):
+    sandbox = tmp_path / "sandbox"
+    sandbox.mkdir()
+
+    engine = DetectionEngine(str(sandbox))
+    now = datetime.now(timezone.utc)
+
+    recent_events = [
+        {
+            "path": str(sandbox / "file1.txt"),
+            "timestamp": now.isoformat(),
+            "indicators": [],
+            "reasons": ["High file entropy", "Rapid file-rename activity"],
+        }
+    ]
+
+    count = engine._count_correlated_indicators(
+        recent_events=recent_events,
+        current_reasons=["Ordinary activity"],
+        current_time=now,
+        current_indicators=[],
+    )
+
+    assert count == 0

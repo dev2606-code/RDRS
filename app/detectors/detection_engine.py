@@ -57,11 +57,9 @@ class DetectionEngine:
     def _parse_timestamp(
         timestamp: Any,
     ) -> datetime | None:
-        if isinstance(timestamp, bool):
-            return None
         """Convert supported timestamps into timezone-aware UTC datetimes."""
 
-        if timestamp is None or timestamp == "":
+        if isinstance(timestamp, bool):
             return None
 
         try:
@@ -225,74 +223,8 @@ class DetectionEngine:
                 suspicious_paths.add(str(event_path))
 
         return len(suspicious_paths)
-    def _count_correlated_indicators(
-        self,
-        recent_events: list[dict[str, Any]],
-        current_reasons: list[str],
-        current_time: datetime,
-        current_indicators: list[str] | None = None,
-    ) -> int:
-        """Count distinct risk categories using IDs or legacy reasons."""
 
-        cutoff = current_time - timedelta(
-            seconds=self.WINDOW_SECONDS
-        )
 
-        found_indicators = set()
-
-        def collect_ids(indicators: list[str]) -> None:
-            for indicator_id in indicators:
-                category = self.indicator_id_categories.get(
-                    indicator_id
-                )
-                if category:
-                    found_indicators.add(category)
-
-        def collect_legacy_reasons(reasons: list[str]) -> None:
-            for reason in reasons:
-                reason_lower = str(reason).lower()
-
-                for category, keywords in self.indicator_keywords.items():
-                    if any(
-                        keyword in reason_lower
-                        for keyword in keywords
-                    ):
-                        found_indicators.add(category)
-
-        # Current event: structured IDs are preferred.
-        collect_ids(current_indicators or [])
-        collect_legacy_reasons(current_reasons)
-
-        for item in recent_events:
-            event_time = self._parse_timestamp(
-                item.get("timestamp")
-            )
-
-            if event_time is None:
-                continue
-
-            if not cutoff <= event_time <= current_time:
-                continue
-
-            if self._event_path(item) is None:
-                continue
-
-            historical_ids = item.get("indicators")
-
-            if isinstance(historical_ids, list):
-                collect_ids(historical_ids)
-
-            # Keep backward compatibility for previously stored events.
-            reasons = item.get("reasons") or []
-
-            if isinstance(reasons, str):
-                reasons = [reasons]
-
-            if isinstance(reasons, list):
-                collect_legacy_reasons(reasons)
-
-        return len(found_indicators)
-  
     def _calculate_confidence(
         self,
         indicator_count: int,
@@ -539,3 +471,81 @@ class DetectionEngine:
             return "medium"
 
         return "low"
+
+    def _count_correlated_indicators(
+        self,
+        recent_events: list[dict[str, Any]],
+        current_reasons: list[str],
+        current_time: datetime,
+        current_indicators: list[str] | None = None,
+    ) -> int:
+        """Count distinct categories using structured IDs with legacy fallback."""
+
+        cutoff = current_time - timedelta(
+            seconds=self.WINDOW_SECONDS
+        )
+
+        found_indicators = set()
+
+        def collect_ids(indicators: list[str]) -> None:
+            for indicator_id in indicators:
+                if not isinstance(indicator_id, str):
+                    continue
+
+                category = self.indicator_id_categories.get(
+                    indicator_id
+                )
+
+                if category:
+                    found_indicators.add(category)
+
+        def collect_legacy_reasons(reasons: list[str]) -> None:
+            for reason in reasons:
+                reason_lower = str(reason).lower()
+
+                for category, keywords in self.indicator_keywords.items():
+                    if any(
+                        keyword in reason_lower
+                        for keyword in keywords
+                    ):
+                        found_indicators.add(category)
+
+        # Current event: use IDs when available.
+        # Fall back to reason text only for legacy events.
+        if current_indicators is not None:
+            collect_ids(current_indicators)
+        else:
+            collect_legacy_reasons(current_reasons)
+
+        for item in recent_events:
+            event_time = self._parse_timestamp(
+                item.get("timestamp")
+            )
+
+            if event_time is None:
+                continue
+
+            if not cutoff <= event_time <= current_time:
+                continue
+
+            if self._event_path(item) is None:
+                continue
+
+            historical_ids = item.get("indicators")
+
+            # Structured event: use IDs exclusively.
+            # Even an empty ID list means it is a structured event.
+            if isinstance(historical_ids, list):
+                collect_ids(historical_ids)
+                continue
+
+            # Legacy event: no structured IDs available.
+            reasons = item.get("reasons") or []
+
+            if isinstance(reasons, str):
+                reasons = [reasons]
+
+            if isinstance(reasons, list):
+                collect_legacy_reasons(reasons)
+
+        return len(found_indicators)
