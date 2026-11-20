@@ -42,16 +42,8 @@ def status():
 @router.get("/events")
 def events(limit: int = Query(default=100, ge=1, le=1000)):
     return {"events": service.list_events(limit)}
-
-@router.post("/test-event")
 def create_test_event():
-    # Keep this endpoint disabled in production unless explicitly enabled.
-    if os.getenv("RDRS_ENABLE_TEST_ENDPOINT") != "true":
-        raise HTTPException(
-            status_code=404,
-            detail="Test endpoint is disabled",
-        )
-
+    # Safe sandbox-only test event.
     test_file = (service.sandbox / "rdrs_safe_test.txt").resolve()
 
     if not test_file.is_relative_to(service.sandbox):
@@ -81,6 +73,13 @@ def create_test_event():
             status_code=400,
             detail=str(exc),
         ) from exc
+
+if os.getenv("RDRS_ENABLE_TEST_ENDPOINT", "").lower() == "true":
+    router.add_api_route(
+        "/test-event",
+        create_test_event,
+        methods=["POST"],
+    )
 
 
 
