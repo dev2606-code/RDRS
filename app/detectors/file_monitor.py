@@ -1,7 +1,6 @@
 
 import logging
 import time
-
 from pathlib import Path
 from threading import Lock
 from typing import Callable
@@ -11,12 +10,26 @@ from watchdog.observers import Observer
 
 
 logger = logging.getLogger("rdrs")
-class SandboxEventHandler(FileSystemEventHandler):
-    """Record file-system events without modifying monitored files."""
 
-    def __init__(self, callback: Callable[[dict], None]):
+
+class SandboxEventHandler(FileSystemEventHandler):
+    """Record file-system events confined to the sandbox."""
+
+    def __init__(
+        self,
+        callback: Callable[[dict], None],
+        sandbox_directory: str,
+    ):
         super().__init__()
         self.callback = callback
+        self.sandbox = Path(sandbox_directory).resolve()
+
+    def _is_inside_sandbox(self, path: str) -> bool:
+        try:
+            resolved = Path(path).resolve()
+            return resolved.is_relative_to(self.sandbox)
+        except (ValueError, TypeError, OSError, RuntimeError):
+            return False
 
     def on_created(self, event: FileSystemEvent) -> None:
         self._record(event, "created")
@@ -40,12 +53,21 @@ class SandboxEventHandler(FileSystemEventHandler):
         if action == "moved":
             destination_path = str(event.dest_path)
 
+            # Reject moves crossing the sandbox boundary.
+            if not self._is_inside_sandbox(source_path):
+                return
+
+            if not self._is_inside_sandbox(destination_path):
+                return
+
+        elif not self._is_inside_sandbox(source_path):
+            return
+
         monitored_path = destination_path or source_path
 
         logger.info(
-            "Watchdog detected file event: action=%s path=%s",
+            "Watchdog detected file event: action=%s",
             action,
-            monitored_path,
         )
 
         event_data = {
@@ -61,10 +83,9 @@ class SandboxEventHandler(FileSystemEventHandler):
         try:
             self.callback(event_data)
         except Exception:
-            logger.exception(
-                "Failed to process watchdog event: %s",
-                event_data,
-            )
+            logger.exception("Failed to process watchdog event")
+
+
 class SandboxFileMonitor:
     """Monitor a dedicated sandbox directory without modifying files."""
 
@@ -87,9 +108,12 @@ class SandboxFileMonitor:
 
             self.directory.mkdir(parents=True, exist_ok=True)
 
-            handler = SandboxEventHandler(self.callback)
-            observer = Observer()
+            handler = SandboxEventHandler(
+                self.callback,
+                str(self.directory),
+            )
 
+            observer = Observer()
             observer.schedule(
                 handler,
                 str(self.directory),
@@ -113,10 +137,7 @@ class SandboxFileMonitor:
                 "Watchdog monitoring directory: %s",
                 self.directory,
             )
-            logger.info(
-                "Sandbox file monitor started: %s",
-                self.directory,
-            )
+            logger.info("Sandbox file monitor started")
 
     def stop(self) -> None:
         with self._lock:
@@ -128,7 +149,9 @@ class SandboxFileMonitor:
             observer.join(timeout=5)
 
             if observer.is_alive():
-                logger.error("Watchdog observer did not stop within 5 seconds")
+                logger.error(
+                    "Watchdog observer did not stop within 5 seconds"
+                )
                 return
 
             self.observer = None

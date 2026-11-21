@@ -22,3 +22,6 @@ data/sandbox/
 
 # macOS
 .DS_Store
+
+# Backup files
+*.bak

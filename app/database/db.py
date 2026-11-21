@@ -1,5 +1,6 @@
 
 import json
+from multiprocessing import connection
 import os
 import sqlite3
 from pathlib import Path
@@ -71,6 +72,9 @@ class EventDatabase:
             )
             reasons_type = "JSONB NOT NULL"
             indicators_type = "JSONB NOT NULL DEFAULT '[]'::jsonb"
+            risk_breakdown_type = (
+                "JSONB NOT NULL DEFAULT '{}'::jsonb"
+            )
             process_id_type = "BIGINT"
             record_id_type = "BIGINT"
         else:
@@ -81,6 +85,9 @@ class EventDatabase:
             )
             reasons_type = "TEXT NOT NULL"
             indicators_type = "TEXT NOT NULL DEFAULT '[]'"
+            risk_breakdown_type = (
+                "TEXT NOT NULL DEFAULT '{}'"
+            )
             process_id_type = "INTEGER"
             record_id_type = "INTEGER"
 
@@ -97,6 +104,7 @@ class EventDatabase:
                     status TEXT NOT NULL,
                     reasons {reasons_type},
                     indicators {indicators_type},
+                    risk_breakdown {risk_breakdown_type},
                     confidence_score INTEGER NOT NULL DEFAULT 10,
                     confidence_level TEXT NOT NULL DEFAULT 'low',
                     process_id {process_id_type},
@@ -136,6 +144,12 @@ class EventDatabase:
                     ALTER TABLE events
                     ADD COLUMN IF NOT EXISTS indicators
                     JSONB NOT NULL DEFAULT '[]'::jsonb
+                """)
+
+                connection.execute("""
+                    ALTER TABLE events
+                    ADD COLUMN IF NOT EXISTS risk_breakdown
+                    JSONB NOT NULL DEFAULT '{}'::jsonb
                 """)
 
                 connection.execute("""
@@ -213,6 +227,13 @@ class EventDatabase:
                         TEXT NOT NULL DEFAULT '[]'
                     """)
 
+                if "risk_breakdown" not in columns:
+                    connection.execute("""
+                        ALTER TABLE events
+                        ADD COLUMN risk_breakdown
+                        TEXT NOT NULL DEFAULT '{}'
+                    """)
+
     @staticmethod
     def _json_value(value):
         if isinstance(value, str):
@@ -222,6 +243,7 @@ class EventDatabase:
     def add_event(self, event: dict[str, Any]) -> int:
         reasons = event.get("reasons", [])
         indicators = event.get("indicators", [])
+        risk_breakdown = event.get("risk_breakdown", {})
         confidence_score = event.get("confidence_score", 10)
         confidence_level = event.get("confidence_level", "low")
 
@@ -244,6 +266,7 @@ class EventDatabase:
                         status,
                         reasons,
                         indicators,
+                        risk_breakdown,
                         confidence_score,
                         confidence_level,
                         process_id,
@@ -253,7 +276,7 @@ class EventDatabase:
                     )
                     VALUES (
                         %s, %s, %s, %s, %s, %s, %s,
-                        %s, %s, %s, %s, %s, %s, %s
+                        %s, %s, %s, %s, %s, %s, %s, %s
                     )
                     RETURNING id
                 """, (
@@ -265,6 +288,7 @@ class EventDatabase:
                     event["status"],
                     json.dumps(reasons),
                     json.dumps(indicators),
+                    json.dumps(risk_breakdown),
                     confidence_score,
                     confidence_level,
                     *process_metadata,
@@ -290,6 +314,7 @@ class EventDatabase:
                         status,
                         reasons,
                         indicators,
+                        risk_breakdown,
                         confidence_score,
                         confidence_level,
                         process_id,
@@ -297,7 +322,9 @@ class EventDatabase:
                         process_path,
                         username
                     )
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    VALUES (
+                        ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+                    )
                 """, (
                     event["path"],
                     event["action"],
@@ -307,6 +334,7 @@ class EventDatabase:
                     event["status"],
                     json.dumps(reasons),
                     json.dumps(indicators),
+                    json.dumps(risk_breakdown),
                     confidence_score,
                     confidence_level,
                     *process_metadata,
@@ -345,6 +373,9 @@ class EventDatabase:
             item["indicators"] = self._json_value(
                 item.get("indicators", "[]")
             )
+            item["risk_breakdown"] = self._json_value(
+                item.get("risk_breakdown", "{}")
+            )
 
             if hasattr(item.get("timestamp"), "isoformat"):
                 item["timestamp"] = item["timestamp"].isoformat(sep=" ")
@@ -377,7 +408,8 @@ class EventDatabase:
                     e.process_path,
                     e.username,
                     e.reasons,
-                    e.indicators
+                    e.indicators,
+                    e.risk_breakdown
                 FROM incidents i
                 JOIN events e ON e.id = i.event_id
                 ORDER BY i.id DESC
@@ -391,6 +423,9 @@ class EventDatabase:
             item["reasons"] = self._json_value(item["reasons"])
             item["indicators"] = self._json_value(
                 item.get("indicators", "[]")
+            )
+            item["risk_breakdown"] = self._json_value(
+                item.get("risk_breakdown", "{}")
             )
 
             for field in ("timestamp", "updated_at"):

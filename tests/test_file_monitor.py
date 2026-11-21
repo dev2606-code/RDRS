@@ -1,7 +1,8 @@
-
 import time
 
-from app.detectors.file_monitor import SandboxFileMonitor
+from watchdog.events import FileCreatedEvent, FileMovedEvent
+
+from app.detectors.file_monitor import SandboxFileMonitor, SandboxEventHandler
 
 
 def test_monitor_detects_file_creation(tmp_path):
@@ -76,3 +77,44 @@ def test_monitor_detects_suspicious_file_rename(tmp_path):
 
     finally:
         monitor.stop()
+def test_monitor_rejects_file_event_outside_sandbox(tmp_path):
+    sandbox = tmp_path / "sandbox"
+    outside_file = tmp_path / "outside.txt"
+    sandbox.mkdir()
+
+    events = []
+    handler = SandboxEventHandler(events.append, str(sandbox))
+
+    handler.on_created(FileCreatedEvent(str(outside_file)))
+
+    assert events == []
+
+
+def test_monitor_rejects_move_from_inside_to_outside(tmp_path):
+    sandbox = tmp_path / "sandbox"
+    sandbox.mkdir()
+
+    source = sandbox / "safe.txt"
+    destination = tmp_path / "outside.txt"
+
+    events = []
+    handler = SandboxEventHandler(events.append, str(sandbox))
+
+    handler.on_moved(FileMovedEvent(str(source), str(destination)))
+
+    assert events == []
+
+
+def test_monitor_rejects_move_from_outside_to_inside(tmp_path):
+    sandbox = tmp_path / "sandbox"
+    sandbox.mkdir()
+
+    source = tmp_path / "outside.txt"
+    destination = sandbox / "safe.txt"
+
+    events = []
+    handler = SandboxEventHandler(events.append, str(sandbox))
+
+    handler.on_moved(FileMovedEvent(str(source), str(destination)))
+
+    assert events == []

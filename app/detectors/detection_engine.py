@@ -256,15 +256,26 @@ class DetectionEngine:
                 "File is outside the configured sandbox"
             )
 
-        # Extract action from incoming event (fixes NameError).
         action = event.get("action", "unknown")
 
         entropy = None
         reasons = []
         indicators = []
         score = 0
+        contributions = []
 
-        # Prefer incoming event timestamp; fall back to UTC now.
+        def add_score(indicator, points, description):
+            nonlocal score
+
+            score += points
+
+            contributions.append({
+                "indicator": indicator,
+                "points": points,
+                "description": description,
+            })
+
+        # Parse event timestamp or fall back to UTC now.
         current_time = (
             self._parse_timestamp(event.get("timestamp"))
             or datetime.now(timezone.utc)
@@ -305,7 +316,12 @@ class DetectionEngine:
 
         # Suspicious file extension.
         if file_path.suffix.lower() in self.suspicious_extensions:
-            score += 25
+            add_score(
+                "suspicious_extension",
+                25,
+                f"Suspicious extension detected: {file_path.suffix}",
+            )
+
             indicators.append("suspicious_extension")
 
             reasons.append(
@@ -327,7 +343,12 @@ class DetectionEngine:
                     )
 
                     if entropy >= 7.2 and not is_compressed_file:
-                        score += 10
+                        add_score(
+                            "high_entropy",
+                            10,
+                            "High file entropy detected (threshold: 7.2)",
+                        )
+
                         indicators.append("high_entropy")
                         reasons.append("High file entropy")
 
@@ -338,13 +359,20 @@ class DetectionEngine:
 
             except OSError:
                 entropy = None
+
                 reasons.append(
                     "File content unavailable for entropy analysis"
                 )
 
         # Suspicious extension burst.
         if recent_suspicious_extension_count >= 5:
-            score += 20
+            add_score(
+                "suspicious_extension_burst",
+                20,
+                f"5 or more suspicious extensions detected in 60 seconds "
+                f"({recent_suspicious_extension_count} files)",
+            )
+
             indicators.append("suspicious_extension_burst")
 
             reasons.append(
@@ -355,25 +383,46 @@ class DetectionEngine:
 
         # Normal creation and modification activity.
         if action in {"created", "modified"}:
-            score += 5
+            add_score(
+                f"file_{action}",
+                5,
+                f"File {action} activity",
+            )
+
             indicators.append(f"file_{action}")
             reasons.append(f"File {action} observed")
 
         # File deletion activity.
         elif action == "deleted":
-            score += 10
+            add_score(
+                "file_deleted",
+                10,
+                "File deletion observed",
+            )
+
             indicators.append("file_deleted")
             reasons.append("File deletion observed")
 
         # File rename activity.
         elif action == "moved":
-            score += 10
+            add_score(
+                "file_renamed",
+                10,
+                "File rename activity",
+            )
+
             indicators.append("file_renamed")
             reasons.append("File rename observed")
 
         # Rapid file renaming.
         if recent_move_count >= 5:
-            score += 15
+            add_score(
+                "rapid_file_rename",
+                15,
+                f"5 or more file renames within 60 seconds "
+                f"({recent_move_count} files)",
+            )
+
             indicators.append("rapid_file_rename")
 
             reasons.append(
@@ -384,7 +433,13 @@ class DetectionEngine:
 
         # Rapid file modification.
         if recent_change_count >= 10:
-            score += 30
+            add_score(
+                "high_file_change_activity",
+                30,
+                f"10 or more file changes within 60 seconds "
+                f"({recent_change_count} files)",
+            )
+
             indicators.append("high_file_change_activity")
 
             reasons.append(
@@ -394,7 +449,13 @@ class DetectionEngine:
             )
 
         elif recent_change_count >= 5:
-            score += 15
+            add_score(
+                "elevated_file_change_activity",
+                15,
+                f"5 or more file changes within 60 seconds "
+                f"({recent_change_count} files)",
+            )
+
             indicators.append("elevated_file_change_activity")
 
             reasons.append(
@@ -414,7 +475,13 @@ class DetectionEngine:
         )
 
         if correlated_indicator_count >= 3:
-            score += 15
+            add_score(
+                "correlated_indicators",
+                15,
+                f"Correlation bonus: {correlated_indicator_count} "
+                "distinct indicator categories detected in 60 seconds",
+            )
+
             indicators.append("correlated_indicators")
 
             reasons.append(
@@ -423,8 +490,11 @@ class DetectionEngine:
                 "distinct indicators in 60 seconds)"
             )
 
+        # Preserve the uncapped score for explainability.
+        raw_score = score
+
         # Cap risk score.
-        score = min(score, 100)
+        score = min(raw_score, 100)
 
         confidence_score, confidence_level = (
             self._calculate_confidence(
@@ -445,6 +515,12 @@ class DetectionEngine:
             "username": event.get("username"),
             "entropy": entropy,
             "risk_score": score,
+            "risk_breakdown": {
+                "raw_score": raw_score,
+                "final_score": score,
+                "cap_applied": raw_score > 100,
+                "contributions": contributions,
+            },
             "severity": severity,
             "status": "needs_review",
             "confidence_score": confidence_score,
@@ -454,7 +530,7 @@ class DetectionEngine:
                 "No configured risk indicators matched"
             ],
         }
-   
+
     @staticmethod
     def _get_severity(
         risk_score: int,
@@ -471,6 +547,7 @@ class DetectionEngine:
             return "medium"
 
         return "low"
+
 
     def _count_correlated_indicators(
         self,
@@ -510,8 +587,6 @@ class DetectionEngine:
                     ):
                         found_indicators.add(category)
 
-        # Current event: use IDs when available.
-        # Fall back to reason text only for legacy events.
         if current_indicators is not None:
             collect_ids(current_indicators)
         else:
@@ -533,13 +608,10 @@ class DetectionEngine:
 
             historical_ids = item.get("indicators")
 
-            # Structured event: use IDs exclusively.
-            # Even an empty ID list means it is a structured event.
             if isinstance(historical_ids, list):
                 collect_ids(historical_ids)
                 continue
 
-            # Legacy event: no structured IDs available.
             reasons = item.get("reasons") or []
 
             if isinstance(reasons, str):

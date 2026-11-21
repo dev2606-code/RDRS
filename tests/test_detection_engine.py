@@ -916,3 +916,88 @@ def test_empty_structured_indicators_do_not_use_legacy_reasons(tmp_path):
     )
 
     assert count == 0
+
+def test_risk_breakdown_tracks_normal_file_creation(tmp_path):
+    sandbox = tmp_path / "sandbox"
+    sandbox.mkdir()
+
+    sample = sandbox / "normal.txt"
+    sample.write_text("Harmless test content.", encoding="utf-8")
+
+    engine = DetectionEngine(str(sandbox))
+
+    result = engine.analyze_event({
+        "path": str(sample),
+        "action": "created",
+    })
+
+    breakdown = result["risk_breakdown"]
+
+    assert breakdown["raw_score"] == 5
+    assert breakdown["final_score"] == 5
+    assert breakdown["cap_applied"] is False
+
+    contributions = breakdown["contributions"]
+
+    assert any(
+        item["indicator"] == "file_created"
+        and item["points"] == 5
+        for item in contributions
+    )
+
+
+def test_risk_breakdown_caps_score_at_100(tmp_path):
+    sandbox = tmp_path / "sandbox"
+    sandbox.mkdir()
+
+    sample = sandbox / "current.locked"
+    sample.write_bytes(random.randbytes(4096))
+
+    engine = DetectionEngine(str(sandbox))
+    now = datetime.now(timezone.utc).isoformat()
+
+    recent_events = [
+        {
+            "path": str(sandbox / f"modified_{i}.txt"),
+            "action": "modified",
+            "timestamp": now,
+            "indicators": ["high_entropy"],
+        }
+        for i in range(10)
+    ]
+
+    recent_events += [
+        {
+            "path": str(sandbox / f"moved_{i}.txt"),
+            "action": "moved",
+            "timestamp": now,
+            "indicators": ["rapid_file_rename"],
+        }
+        for i in range(5)
+    ]
+
+    recent_events += [
+        {
+            "path": str(sandbox / f"burst_{i}.locked"),
+            "action": "created",
+            "timestamp": now,
+            "indicators": ["suspicious_extension"],
+        }
+        for i in range(5)
+    ]
+
+    result = engine.analyze_event(
+        {
+            "path": str(sample),
+            "action": "created",
+            "timestamp": now,
+        },
+        recent_events=recent_events,
+    )
+
+    breakdown = result["risk_breakdown"]
+
+    assert breakdown["raw_score"] > 100
+    assert breakdown["final_score"] == 100
+    assert breakdown["cap_applied"] is True
+    assert result["risk_score"] == 100

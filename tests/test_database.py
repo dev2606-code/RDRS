@@ -161,3 +161,82 @@ def test_sysmon_receipts_use_computer_and_channel_identity(tmp_path):
     assert first is True
     assert second is True
     assert third is True
+
+def test_risk_breakdown_is_saved_and_retrieved(tmp_path):
+    database = EventDatabase(str(tmp_path / "risk_breakdown.db"))
+
+    breakdown = {
+        "raw_score": 35,
+        "final_score": 35,
+        "cap_applied": False,
+        "contributions": [
+            {
+                "indicator": "file_created",
+                "points": 5,
+                "description": "File creation observed",
+            },
+            {
+                "indicator": "suspicious_extension",
+                "points": 25,
+                "description": "Suspicious file extension",
+            },
+            {
+                "indicator": "high_entropy",
+                "points": 5,
+                "description": "High entropy detected",
+            },
+        ],
+    }
+
+    database.add_event({
+        "path": "/sandbox/sample.locked",
+        "action": "created",
+        "entropy": 7.5,
+        "risk_score": 35,
+        "severity": "medium",
+        "status": "needs_review",
+        "reasons": ["Suspicious file extension"],
+        "risk_breakdown": breakdown,
+    })
+
+    result = database.list_events()[0]
+
+    assert result["risk_breakdown"] == breakdown
+
+def test_risk_breakdown_is_included_in_incidents(tmp_path):
+    database = EventDatabase(str(tmp_path / "incident_risk_breakdown.db"))
+
+    breakdown = {
+        "raw_score": 45,
+        "final_score": 45,
+        "cap_applied": False,
+        "contributions": [
+            {
+                "indicator": "suspicious_extension",
+                "points": 25,
+                "description": "Suspicious extension detected",
+            },
+            {
+                "indicator": "file_change_burst",
+                "points": 20,
+                "description": "Rapid file changes detected",
+            },
+        ],
+    }
+
+    event_id = database.add_event({
+        "path": "/sandbox/sample.locked",
+        "action": "created",
+        "entropy": 7.5,
+        "risk_score": 45,
+        "severity": "high",
+        "status": "needs_review",
+        "reasons": ["Suspicious activity"],
+        "risk_breakdown": breakdown,
+    })
+
+    incidents = database.list_incidents()
+
+    assert len(incidents) == 1
+    assert incidents[0]["event_id"] == event_id
+    assert incidents[0]["risk_breakdown"] == breakdown

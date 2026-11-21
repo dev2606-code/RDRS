@@ -46,7 +46,10 @@ class RDRSService:
         self._running = False
 
     def process_event(self, event: dict[str, Any]) -> dict[str, Any]:
-        logger.info("Sandbox file event received: %s", event)
+        logger.info(
+            "Sandbox file event received: action=%s",
+            event.get("action", "unknown"),
+        )
 
         try:
             enriched_event = dict(event)
@@ -78,7 +81,10 @@ class RDRSService:
                 recent_events=recent_events,
             )
 
-            logger.info("Detection result: %s", result)
+            logger.info(
+                "Detection completed: risk_score=%s",
+                result.get("risk_score", "unknown"),
+            )
 
             event_id = self.database.add_event(result)
 

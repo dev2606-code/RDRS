@@ -1,18 +1,19 @@
 
 "use strict";
 
-// ============================================================
 // RDRS - Ransomware Detection and Response System
 // Frontend JavaScript
-// ============================================================
 
-const API_BASE = "https://rdrs-5c5r.onrender.com";
+const API_BASE = "http://127.0.0.1:8000";
+
 const content = document.getElementById("page-content");
 const toast = document.getElementById("toast");
 
 let toastTimer = null;
 let activePage = "overview";
+
 window.overviewRefreshTimer = null;
+
 const originalOverview = content ? content.innerHTML : "";
 
 // ============================================================
@@ -94,7 +95,8 @@ async function apiRequest(endpoint, options = {}) {
   const response = await fetch(`${API_BASE}${endpoint}`, {
     ...options,
     method,
-    headers
+    headers,
+    credentials: "include"
   });
 
   if (!response.ok) {
@@ -103,6 +105,250 @@ async function apiRequest(endpoint, options = {}) {
 
   return response.json();
 }
+// ============================================================
+// AUTHENTICATION GATE
+// ============================================================
+
+let rdrsAuthenticated = false;
+
+function showLoginScreen(message = "") {
+  const appShell = document.querySelector(".app-shell");
+  if (appShell) appShell.style.display = "none";
+
+  let screen = document.getElementById("rdrs-login-screen");
+
+  if (!screen) {
+    screen = document.createElement("section");
+    screen.id = "rdrs-login-screen";
+    screen.style.cssText =
+      "min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;background:#0b0b18;color:#f5f5ff;font-family:Inter,system-ui,sans-serif;";
+
+    screen.innerHTML = `
+      <div style="width:100%;max-width:420px;background:#17172b;border:1px solid #343450;border-radius:16px;padding:32px;box-shadow:0 20px 60px rgba(0,0,0,.35)">
+        <div style="font-size:13px;letter-spacing:2px;color:#b9a0ff;margin-bottom:10px">
+          RDRS · DEFENSIVE SECURITY
+        </div>
+
+        <h1 style="margin:0 0 8px;font-size:28px">
+          Sign in
+        </h1>
+
+        <p style="margin:0 0 24px;color:#b8b8ce">
+          Sign in to access your security dashboard.
+        </p>
+
+        <form id="rdrs-login-form">
+
+          <label for="rdrs-username"
+                 style="display:block;margin-bottom:8px;font-size:14px">
+            Username
+          </label>
+
+          <input
+            id="rdrs-username"
+            name="username"
+            autocomplete="username"
+            required
+            style="box-sizing:border-box;width:100%;padding:12px;border:1px solid #44445f;border-radius:8px;background:#101021;color:white;margin-bottom:16px"
+          >
+
+          <label for="rdrs-password"
+                 style="display:block;margin-bottom:8px;font-size:14px">
+            Password
+          </label>
+
+          <input
+            id="rdrs-password"
+            name="password"
+            type="password"
+            autocomplete="current-password"
+            required
+            style="box-sizing:border-box;width:100%;padding:12px;border:1px solid #44445f;border-radius:8px;background:#101021;color:white;margin-bottom:16px"
+          >
+
+          <p
+            id="rdrs-login-error"
+            role="alert"
+            style="min-height:20px;color:#ff8585;font-size:13px;margin:0 0 12px"
+          ></p>
+
+          <button
+            type="submit"
+            style="width:100%;padding:12px;border:0;border-radius:8px;background:#8057e8;color:white;font-weight:600;cursor:pointer"
+          >
+            Sign in
+          </button>
+
+        </form>
+
+        <p style="font-size:12px;color:#9292aa;margin:20px 0 0">
+          Authorized local sandbox access only.
+        </p>
+      </div>
+    `;
+
+    document.body.appendChild(screen);
+
+    screen.querySelector("#rdrs-login-form")
+      .addEventListener("submit", handleRdrsLogin);
+  }
+
+  screen.style.display = "flex";
+
+  const error = screen.querySelector("#rdrs-login-error");
+  if (error) error.textContent = message;
+
+  screen.querySelector("#rdrs-username")?.focus();
+}
+
+
+function hideLoginScreen() {
+  document.getElementById("rdrs-login-screen")?.remove();
+
+  const appShell = document.querySelector(".app-shell");
+  if (appShell) appShell.style.display = "";
+}
+
+
+async function handleRdrsLogin(event) {
+  event.preventDefault();
+
+  const form = event.currentTarget;
+  const button = form.querySelector("button[type='submit']");
+  const error = document.getElementById("rdrs-login-error");
+
+  const username = form.elements.username.value.trim();
+  const password = form.elements.password.value;
+
+  if (button) {
+    button.disabled = true;
+    button.textContent = "Signing in…";
+  }
+
+  if (error) error.textContent = "";
+
+  try {
+    const response = await fetch(`${API_BASE}/api/login`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      credentials: "include",
+      body: JSON.stringify({
+        username,
+        password
+      })
+    });
+
+    const data = await response.json().catch(() => ({}));
+
+    if (!response.ok) {
+      const msg = data.detail || (
+        response.status === 503
+          ? "Authentication is not configured on the backend."
+          : "Invalid username or password."
+      );
+
+      showLoginScreen(msg);
+      return;
+    }
+
+    rdrsAuthenticated = true;
+
+    hideLoginScreen();
+    form.reset();
+
+    bindPageLinks();
+    bindRefreshButton();
+
+    renderPage("overview");
+
+    showToast("Login successful.");
+
+  } catch (err) {
+    console.error("RDRS login error:", err);
+
+    showLoginScreen(
+      "Unable to reach the backend. Check that RDRS API is running."
+    );
+
+  } finally {
+    const currentForm =
+      document.getElementById("rdrs-login-form");
+
+    const currentButton =
+      currentForm?.querySelector("button[type='submit']");
+
+    if (currentButton) {
+      currentButton.disabled = false;
+      currentButton.textContent = "Sign in";
+    }
+  }
+}
+
+
+async function rdrsLogout() {
+  try {
+    await apiRequest("/api/logout", {
+      method: "POST"
+    });
+  } catch (err) {
+    console.warn("RDRS logout request failed:", err);
+  }
+
+  rdrsAuthenticated = false;
+
+  showLoginScreen("You have been signed out.");
+}
+
+
+async function checkRdrsSession() {
+  const appShell = document.querySelector(".app-shell");
+
+  if (appShell) appShell.style.display = "none";
+
+  try {
+    await apiRequest("/api/status");
+
+    rdrsAuthenticated = true;
+
+    hideLoginScreen();
+
+    bindPageLinks();
+    bindRefreshButton();
+
+    renderPage("overview");
+
+  } catch (err) {
+    rdrsAuthenticated = false;
+    showLoginScreen();
+  }
+}
+
+
+function addRdrsLogoutButton() {
+  const actions = document.querySelector(".top-actions");
+
+  if (!actions || document.getElementById("rdrs-logout-button")) {
+    return;
+  }
+
+  const button = document.createElement("button");
+
+  button.id = "rdrs-logout-button";
+  button.type = "button";
+  button.textContent = "Logout";
+  button.className = "icon-button";
+  button.title = "Sign out";
+
+  button.addEventListener("click", rdrsLogout);
+
+  actions.appendChild(button);
+}
+
+// ============================================================
+// END AUTHENTICATION GATE
+// ============================================================
 function formatTimestamp(value) {
   if (!value) return "—";
 
@@ -470,17 +716,22 @@ function showOverviewEventDetails(event) {
     padding: 20px;
   `;
 
-const details = [
-  ["Event ID", event.id ?? "N/A"],
-  ["File Path", event.path ?? "Unknown"],
-  ["Action", event.action ?? "Unknown"],
-  ["Timestamp", formatTimestamp(event.timestamp)],
-  ["Risk Score", event.risk_score ?? 0],
-  ["Severity", event.severity ?? "Unknown"],
-  ["Confidence Score", `${event.confidence_score ?? 10}/100`],
-  ["Confidence Level", event.confidence_level ?? "low"],
-  ["Detection Reasons", (event.reasons || []).join(", ") || "No reasons recorded"]
-];
+  const details = [
+    ["Event ID", event.id ?? "N/A"],
+    ["File Path", event.path ?? "Unknown"],
+    ["Action", event.action ?? "Unknown"],
+    ["Timestamp", formatTimestamp(event.timestamp)],
+    ["Risk Score", event.risk_score ?? 0],
+    ["Severity", event.severity ?? "Unknown"],
+    ["Confidence Score", `${event.confidence_score ?? 10}/100`],
+    ["Confidence Level", event.confidence_level ?? "low"],
+    [
+      "Detection Reasons",
+      Array.isArray(event.reasons)
+        ? event.reasons.join(", ") || "No reasons recorded"
+        : event.reasons ?? "No reasons recorded"
+    ]
+  ];
 
   const content = document.createElement("div");
 
@@ -490,7 +741,7 @@ const details = [
     padding: 24px;
     border-radius: 12px;
     width: 100%;
-    max-width: 550px;
+    max-width: 600px;
     max-height: 80vh;
     overflow-y: auto;
   `;
@@ -499,23 +750,166 @@ const details = [
   heading.textContent = "Event Details";
   content.appendChild(heading);
 
+  // Existing event details
   details.forEach(([label, value]) => {
     const item = document.createElement("p");
+
     const strong = document.createElement("strong");
     strong.textContent = `${label}: `;
+
     item.appendChild(strong);
     item.appendChild(document.createTextNode(String(value)));
+
     content.appendChild(item);
   });
 
+  // ============================================================
+  // RISK SCORE BREAKDOWN
+  // ============================================================
+
+  const breakdown = event.risk_breakdown;
+
+  const breakdownSection = document.createElement("div");
+
+  breakdownSection.style.cssText = `
+    margin-top: 24px;
+    padding: 16px;
+    background: #22223a;
+    border: 1px solid #393957;
+    border-radius: 10px;
+  `;
+
+  const breakdownHeading = document.createElement("h3");
+  breakdownHeading.textContent = "Risk Score Breakdown";
+  breakdownHeading.style.marginTop = "0";
+
+  breakdownSection.appendChild(breakdownHeading);
+
+  if (breakdown && typeof breakdown === "object") {
+    const scoreSummary = document.createElement("div");
+
+    scoreSummary.style.cssText = `
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+      margin-bottom: 16px;
+    `;
+
+    const scoreItems = [
+      ["Raw Score", breakdown.raw_score ?? "N/A"],
+      ["Final Score", breakdown.final_score ?? event.risk_score ?? "N/A"],
+      [
+        "Score Cap",
+        breakdown.cap_applied ? "Applied (100)" : "Not applied"
+      ]
+    ];
+
+    scoreItems.forEach(([label, value]) => {
+      const card = document.createElement("div");
+
+      card.style.cssText = `
+        background: #17172b;
+        padding: 12px;
+        border-radius: 8px;
+        flex: 1;
+        min-width: 100px;
+      `;
+
+      const cardLabel = document.createElement("div");
+      cardLabel.textContent = label;
+      cardLabel.style.cssText = `
+        color: #a7a7c4;
+        font-size: 12px;
+        margin-bottom: 6px;
+      `;
+
+      const cardValue = document.createElement("strong");
+      cardValue.textContent = String(value);
+
+      card.appendChild(cardLabel);
+      card.appendChild(cardValue);
+      scoreSummary.appendChild(card);
+    });
+
+    breakdownSection.appendChild(scoreSummary);
+
+    // Individual scoring contributions
+    const contributions = Array.isArray(breakdown.contributions)
+      ? breakdown.contributions
+      : [];
+
+    const contributionHeading = document.createElement("h4");
+    contributionHeading.textContent = "Score Contributions";
+    breakdownSection.appendChild(contributionHeading);
+
+    if (contributions.length > 0) {
+      contributions.forEach((contribution) => {
+        const item = document.createElement("div");
+
+        item.style.cssText = `
+          padding: 12px;
+          margin-bottom: 8px;
+          background: #17172b;
+          border-radius: 8px;
+          border-left: 3px solid #8b5cf6;
+        `;
+
+        const indicator = document.createElement("strong");
+        indicator.textContent = String(
+          contribution.indicator ?? "Unknown Indicator"
+        );
+
+        const points = document.createElement("span");
+        points.textContent = `+${contribution.points ?? 0} points`;
+        points.style.cssText = `
+          float: right;
+          color: #c4a5ff;
+          font-weight: bold;
+        `;
+
+        const description = document.createElement("p");
+        description.textContent = String(
+          contribution.description ?? "No description available"
+        );
+
+        description.style.cssText = `
+          margin: 8px 0 0;
+          color: #b9b9ce;
+          font-size: 13px;
+        `;
+
+        item.appendChild(indicator);
+        item.appendChild(points);
+        item.appendChild(description);
+
+        breakdownSection.appendChild(item);
+      });
+    } else {
+      const noContributions = document.createElement("p");
+      noContributions.textContent = "No individual score contributions recorded.";
+      breakdownSection.appendChild(noContributions);
+    }
+  } else {
+    const unavailable = document.createElement("p");
+    unavailable.textContent = "Risk breakdown is not available for this event.";
+    breakdownSection.appendChild(unavailable);
+  }
+
+  content.appendChild(breakdownSection);
+
+  // ============================================================
+  // CLOSE BUTTON
+  // ============================================================
+
   const closeButton = document.createElement("button");
   closeButton.textContent = "Close";
+
   closeButton.style.cssText = `
     padding: 10px 20px;
     border: none;
     border-radius: 6px;
     cursor: pointer;
-    margin-top: 12px;
+    margin-top: 16px;
   `;
 
   closeButton.addEventListener("click", () => modal.remove());
@@ -526,6 +920,16 @@ const details = [
   modal.addEventListener("click", (e) => {
     if (e.target === modal) modal.remove();
   });
+
+  // Close modal using Escape key
+  const handleEscape = (e) => {
+    if (e.key === "Escape" && document.querySelector("#event-details-modal") === modal) {
+      modal.remove();
+      document.removeEventListener("keydown", handleEscape);
+    }
+  };
+
+  document.addEventListener("keydown", handleEscape);
 
   document.body.appendChild(modal);
 }
@@ -562,6 +966,7 @@ async function loadLiveDetectionData() {
         `Connected to RDRS. Showing ${events.length} event(s) and ${alerts.length} alert(s).`;
     }
 
+    // Update statistics
     const stats = content?.querySelectorAll(".stats-grid .stat-card");
 
     if (stats?.length) {
@@ -585,108 +990,137 @@ async function loadLiveDetectionData() {
     }
 
     if (tbody) {
+      // Recreate toolbar on refresh
+      const existingToolbar = content.querySelector("#incident-filters");
+      if (existingToolbar) existingToolbar.remove();
 
-const existingToolbar = content?.querySelector("#incident-filters");
-if (existingToolbar) existingToolbar.remove();
+      const toolbar = document.createElement("div");
+      toolbar.id = "incident-filters";
+      toolbar.style.cssText =
+        "display:flex;gap:12px;flex-wrap:wrap;margin:16px 0;";
 
-const toolbar = document.createElement("div");
-toolbar.id = "incident-filters";
-toolbar.style.cssText =
-  "display:flex;gap:12px;flex-wrap:wrap;margin:16px 0;";
+      toolbar.innerHTML = `
+        <input
+          id="incident-search"
+          type="search"
+          placeholder="Search ID, file path, status..."
+          aria-label="Search events"
+          style="padding:10px;min-width:220px;flex:1;"
+        />
 
-toolbar.innerHTML = `
-  <input
-    id="incident-search"
-    type="search"
-    placeholder="Search ID, file path, status..."
-    aria-label="Search incidents"
-    style="padding:10px;min-width:220px;flex:1;"
-  />
+        <select
+          id="incident-severity"
+          aria-label="Filter by severity"
+          style="padding:10px;min-width:160px;"
+        >
+          <option value="all">All severities</option>
+          <option value="critical">Critical</option>
+          <option value="high">High</option>
+          <option value="medium">Medium</option>
+          <option value="low">Low</option>
+        </select>
+      `;
 
-  <select
-    id="incident-severity"
-    aria-label="Filter by severity"
-    style="padding:10px;min-width:160px;"
-  >
-    <option value="all">All severities</option>
-    <option value="critical">Critical</option>
-    <option value="high">High</option>
-    <option value="medium">Medium</option>
-    <option value="low">Low</option>
-  </select>
-`;
+      const incidentPanel = tbody.closest(".panel");
 
-const incidentPanel = tbody?.closest(".panel");
-if (incidentPanel) {
-  incidentPanel.insertBefore(toolbar, incidentPanel.querySelector(".table-toolbar") || incidentPanel.firstChild);
-}
+      if (incidentPanel) {
+        incidentPanel.insertBefore(
+          toolbar,
+          incidentPanel.querySelector(".table-toolbar") ||
+            incidentPanel.firstChild
+        );
+      }
 
-function filterIncidentRows() {
-  const query = (
-    content.querySelector("#incident-search")?.value || ""
-  ).toLowerCase().trim();
+      // Search and severity filtering
+      function filterIncidentRows() {
+        const query = (
+          content.querySelector("#incident-search")?.value || ""
+        ).toLowerCase().trim();
 
-  const severityFilter =
-    content.querySelector("#incident-severity")?.value || "all";
+        const severityFilter =
+          content.querySelector("#incident-severity")?.value || "all";
 
-  tbody?.querySelectorAll("tr").forEach(row => {
-    const text = row.textContent.toLowerCase();
-    const rowSeverity = row.querySelector(".tag")?.textContent
-      .toLowerCase() || "";
+        tbody.querySelectorAll("tr[data-event-index]").forEach(row => {
+          const text = row.textContent.toLowerCase();
 
-    const matchesSearch = text.includes(query);
-    const matchesSeverity =
-      severityFilter === "all" || rowSeverity.includes(severityFilter);
+          const rowSeverity = row.querySelector(".tag")?.textContent
+            .toLowerCase() || "";
 
-    row.hidden = !(matchesSearch && matchesSeverity);
-  });
-}
+          const matchesSearch = text.includes(query);
 
-toolbar.querySelector("#incident-search")
-  .addEventListener("input", filterIncidentRows);
+          const matchesSeverity =
+            severityFilter === "all" ||
+            rowSeverity.includes(severityFilter);
 
-toolbar.querySelector("#incident-severity")
-  .addEventListener("change", filterIncidentRows);
+          row.hidden = !(matchesSearch && matchesSeverity);
+        });
+      }
 
-// Live File Events table
-if (events.length === 0) {
-  tbody.innerHTML =
-    '<tr><td colspan="6">No file events returned by the backend.</td></tr>';
-} else {
-  tbody.innerHTML = events.map(event => {
-    const timestamp = formatTimestamp(event.timestamp);
-    const path = event.path ?? "Unknown path";
-    const action = event.action ?? event.event_type ?? "File event";
-    const entropy = Number(event.entropy ?? 0).toFixed(2);
-    const risk = Number(event.risk_score ?? 0);
-    const severity = getSeverityClass(
-      event.severity ?? getRiskLevel(risk)
-    );
+      toolbar.querySelector("#incident-search")
+        .addEventListener("input", filterIncidentRows);
 
-    const confidenceScore = Number(event.confidence_score ?? 10);
-    const confidenceLevel = String(
-      event.confidence_level ?? "low"
-    ).toUpperCase();
+      toolbar.querySelector("#incident-severity")
+        .addEventListener("change", filterIncidentRows);
 
-    return `
-      <tr>
-        <td>${escapeHTML(timestamp)}</td>
-        <td>${escapeHTML(path)}</td>
-        <td>${escapeHTML(action)}</td>
-        <td>${escapeHTML(entropy)}</td>
-        <td>
-          <span class="tag ${severity}">${risk}</span>
-        </td>
-        <td>
-          ${escapeHTML(`${confidenceScore}/100 · ${confidenceLevel}`)}
-        </td>
-      </tr>
-    `;
-  }).join("");
-}
+      // Render events table
+      if (events.length === 0) {
+        tbody.innerHTML =
+          '<tr><td colspan="6">No file events returned by the backend.</td></tr>';
+      } else {
+        tbody.innerHTML = events.map((event, index) => {
+          const timestamp = formatTimestamp(event.timestamp);
+          const path = event.path ?? "Unknown path";
+          const action = event.action ?? event.event_type ?? "File event";
+          const entropy = Number(event.entropy ?? 0).toFixed(2);
+          const risk = Number(event.risk_score ?? 0);
+
+          const severity = getSeverityClass(
+            event.severity ?? getRiskLevel(risk)
+          );
+
+          const confidenceScore = Number(event.confidence_score ?? 10);
+
+          const confidenceLevel = String(
+            event.confidence_level ?? "low"
+          ).toUpperCase();
+
+          return `
+            <tr
+              data-event-index="${index}"
+              style="cursor:pointer;"
+              title="Click to view event details and risk breakdown"
+            >
+              <td>${escapeHTML(timestamp)}</td>
+              <td>${escapeHTML(path)}</td>
+              <td>${escapeHTML(action)}</td>
+              <td>${escapeHTML(entropy)}</td>
+              <td>
+                <span class="tag ${severity}">${risk}</span>
+              </td>
+              <td>
+                ${escapeHTML(`${confidenceScore}/100 · ${confidenceLevel}`)}
+              </td>
+            </tr>
+          `;
+        }).join("");
+
+        // Click a row to open Risk Score Breakdown
+        tbody.querySelectorAll("tr[data-event-index]").forEach(row => {
+          row.addEventListener("click", () => {
+            const index = Number(row.dataset.eventIndex);
+
+            if (!Number.isInteger(index) || !events[index]) {
+              return;
+            }
+
+            showOverviewEventDetails(events[index]);
+          });
+        });
+      }
     }
 
     showToast(`Loaded ${events.length} RDRS event(s).`);
+
   } catch (error) {
     console.error("RDRS detection API error:", error);
 
@@ -697,11 +1131,14 @@ if (events.length === 0) {
         '<tr><td colspan="6">Unable to load events. Check that the backend is running.</td></tr>';
     }
 
-    if (note) note.textContent = "Could not retrieve live detection data.";
+    if (note) {
+      note.textContent = "Could not retrieve live detection data.";
+    }
 
     showToast("Could not load detection data.");
   }
 }
+
 
 // ============================================================
 // LIVE INCIDENTS PAGE
@@ -1300,14 +1737,12 @@ function bindRefreshButton() {
 // ============================================================
 // INITIALIZATION
 // ============================================================
-
 document.addEventListener("DOMContentLoaded", () => {
   bindPageLinks();
   bindRefreshButton();
 
-  if (content) {
-    renderPage("overview");
-  }
+  addRdrsLogoutButton();
+  checkRdrsSession();
 
   console.log("RDRS frontend initialized.");
 });
