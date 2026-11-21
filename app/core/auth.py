@@ -21,6 +21,7 @@ SESSION_DURATION = 8 * 60 * 60
 
 password_hasher = PasswordHasher()
 ALLOWED_ORIGINS = {
+    "https://rdrs.netlify.app",
     "http://127.0.0.1:5500",
     "http://localhost:5500",
     "http://127.0.0.1:5501",
