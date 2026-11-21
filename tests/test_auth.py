@@ -207,7 +207,7 @@ def test_session_cookie_security_flags():
 
     assert "httponly" in header
     assert "secure" in header
-    assert "samesite=lax" in header
+    assert "samesite=none" in header
     assert "path=/" in header
 
 
@@ -221,4 +221,4 @@ def test_clear_session_cookie():
     assert "rdrs_session=" in header
     assert "httponly" in header
     assert "secure" in header
-    assert "samesite=lax" in header
+    assert "samesite=none" in header
