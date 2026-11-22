@@ -341,23 +341,7 @@ async function checkRdrsSession() {
 
 
 function addRdrsLogoutButton() {
-  const actions = document.querySelector(".top-actions");
-
-  if (!actions || document.getElementById("rdrs-logout-button")) {
-    return;
-  }
-
-  const button = document.createElement("button");
-
-  button.id = "rdrs-logout-button";
-  button.type = "button";
-  button.textContent = "Logout";
-  button.className = "icon-button";
-  button.title = "Sign out";
-
-  button.addEventListener("click", rdrsLogout);
-
-  actions.appendChild(button);
+  return;
 }
 
 // ============================================================
@@ -1411,12 +1395,8 @@ updateNavigation(page);
         [],
         "Refresh Incidents"
       )}
-       ["ID", "Title / File Path", "Severity / Risk", "Confidence", "Status", "Detected"],
-         [],
-        "Refresh Incidents"
-      )}
-<div style="margin: 12px 0;">
-  <button class="btn btn-secondary" id="export-ssincidents" type="button">
+<div class="incidents-export-actions">
+  <button class="btn btn-secondary primary-action" id="export-incidents" type="button">
     Export Incidents CSV
   </button>
 </div>
@@ -1524,6 +1504,13 @@ updateNavigation(page);
         </div>
         <p><strong>API URL:</strong> ${escapeHTML(API_BASE)}</p>
         <button class="btn btn-secondary" id="test-api" type="button">Test API Connection</button>
+        <div class="settings-logout-panel">
+          <div>
+            <h2>Account</h2>
+            <p class="muted-note">End your current RDRS session.</p>
+          </div>
+          <button class="btn btn-secondary" id="rdrs-logout-button" type="button">Logout</button>
+        </div>
       </div>
     `;
   } else {
@@ -1696,6 +1683,11 @@ function bindPageActions() {
         showToast("Could not retrieve monitor status.");
       }
     });
+  }
+
+  const settingsLogout = content?.querySelector("#rdrs-logout-button");
+  if (settingsLogout) {
+    settingsLogout.addEventListener("click", rdrsLogout);
   }
 
   const testApi = content?.querySelector("#test-api");
