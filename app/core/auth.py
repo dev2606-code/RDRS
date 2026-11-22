@@ -17,6 +17,8 @@ from fastapi.responses import Response
 
 
 SESSION_COOKIE = "rdrs_session"
+COOKIE_SECURE = os.getenv("RDRS_COOKIE_SECURE", "true").lower() == "true"
+COOKIE_SAMESITE = "none" if COOKIE_SECURE else "lax"
 SESSION_DURATION = 8 * 60 * 60
 
 password_hasher = PasswordHasher()
@@ -203,8 +205,8 @@ def set_session_cookie(response: Response, token: str) -> None:
         value=token,
         max_age=SESSION_DURATION,
         httponly=True,
-        secure=True,
-        samesite="none",
+        secure=COOKIE_SECURE,
+        samesite=COOKIE_SAMESITE,
         path="/",
     )
 

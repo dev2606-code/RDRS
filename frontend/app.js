@@ -4,7 +4,7 @@
 // RDRS - Ransomware Detection and Response System
 // Frontend JavaScript
 
-const API_BASE = "";
+const API_BASE = "http://localhost:8000";
 
 const content = document.getElementById("page-content");
 const toast = document.getElementById("toast");
@@ -111,181 +111,195 @@ async function apiRequest(endpoint, options = {}) {
 
 let rdrsAuthenticated = false;
 
-function showLoginScreen(message = "") {
+
+let rdrsAuthMode = "login";
+
+function showLoginScreen(message = "", mode = rdrsAuthMode) {
+  rdrsAuthMode = mode;
   const appShell = document.querySelector(".app-shell");
   if (appShell) appShell.style.display = "none";
 
   let screen = document.getElementById("rdrs-login-screen");
-
   if (!screen) {
     screen = document.createElement("section");
     screen.id = "rdrs-login-screen";
-    screen.style.cssText =
-      "min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;background:#0b0b18;color:#f5f5ff;font-family:Inter,system-ui,sans-serif;";
-
-    screen.innerHTML = `
-      <div style="width:100%;max-width:420px;background:#17172b;border:1px solid #343450;border-radius:16px;padding:32px;box-shadow:0 20px 60px rgba(0,0,0,.35)">
-        <div style="font-size:13px;letter-spacing:2px;color:#b9a0ff;margin-bottom:10px">
-          RDRS · DEFENSIVE SECURITY
-        </div>
-
-        <h1 style="margin:0 0 8px;font-size:28px">
-          Sign in
-        </h1>
-
-        <p style="margin:0 0 24px;color:#b8b8ce">
-          Sign in to access your security dashboard.
-        </p>
-
-        <form id="rdrs-login-form">
-
-          <label for="rdrs-username"
-                 style="display:block;margin-bottom:8px;font-size:14px">
-            Username
-          </label>
-
-          <input
-            id="rdrs-username"
-            name="username"
-            autocomplete="username"
-            required
-            style="box-sizing:border-box;width:100%;padding:12px;border:1px solid #44445f;border-radius:8px;background:#101021;color:white;margin-bottom:16px"
-          >
-
-          <label for="rdrs-password"
-                 style="display:block;margin-bottom:8px;font-size:14px">
-            Password
-          </label>
-
-          <input
-            id="rdrs-password"
-            name="password"
-            type="password"
-            autocomplete="current-password"
-            required
-            style="box-sizing:border-box;width:100%;padding:12px;border:1px solid #44445f;border-radius:8px;background:#101021;color:white;margin-bottom:16px"
-          >
-
-          <p
-            id="rdrs-login-error"
-            role="alert"
-            style="min-height:20px;color:#ff8585;font-size:13px;margin:0 0 12px"
-          ></p>
-
-          <button
-            type="submit"
-            style="width:100%;padding:12px;border:0;border-radius:8px;background:#8057e8;color:white;font-weight:600;cursor:pointer"
-          >
-            Sign in
-          </button>
-
-        </form>
-
-        <p style="font-size:12px;color:#9292aa;margin:20px 0 0">
-          Authorized local sandbox access only.
-        </p>
-      </div>
-    `;
-
+    screen.style.cssText = "min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;background:#0b0b18;color:#f5f5ff;font-family:Inter,system-ui,sans-serif;";
     document.body.appendChild(screen);
-
-    screen.querySelector("#rdrs-login-form")
-      .addEventListener("submit", handleRdrsLogin);
   }
 
+  const signup = mode === "signup";
+  const field = "box-sizing:border-box;width:100%;padding:12px;border:1px solid #44445f;border-radius:8px;background:#101021;color:white;margin-bottom:14px;";
+  const label = "display:block;margin-bottom:7px;font-size:14px;";
+  const passwordInput = (id, name, text, autocomplete) => `
+    <label for="${id}" style="${label}">${text}</label>
+    <div style="position:relative;margin-bottom:14px">
+      <input id="${id}" name="${name}" type="password" autocomplete="${autocomplete}" required style="${field}margin:0;padding-right:75px">
+      <button type="button" data-toggle-password="${id}" style="position:absolute;right:8px;top:8px;padding:4px 8px;background:#292941;color:#cfc5ff;border:0;border-radius:5px;cursor:pointer">Show</button>
+    </div>`;
+
+  screen.innerHTML = `
+    <div style="width:100%;max-width:420px;background:#17172b;border:1px solid #343450;border-radius:16px;padding:32px;box-shadow:0 20px 60px rgba(0,0,0,.35)">
+      <div style="font-size:13px;letter-spacing:2px;color:#b9a0ff;margin-bottom:10px">RDRS · DEFENSIVE SECURITY</div>
+      <h1 style="margin:0 0 8px;font-size:28px">${signup ? "Create account" : "Sign in"}</h1>
+      <p style="margin:0 0 24px;color:#b8b8ce">${signup ? "Create an account for your security dashboard." : "Sign in to access your security dashboard."}</p>
+      <form id="rdrs-login-form">
+        ${signup ? `
+          <label for="rdrs-full-name" style="${label}">Full name</label>
+          <input id="rdrs-full-name" name="full_name" autocomplete="name" required minlength="2" style="${field}">
+          <label for="rdrs-email" style="${label}">Email</label>
+          <input id="rdrs-email" name="email" type="email" autocomplete="email" required style="${field}">
+        ` : ""}
+        <label for="rdrs-username" style="${label}">Username</label>
+        <input id="rdrs-username" name="username" autocomplete="username" required minlength="3" maxlength="32" style="${field}">
+        ${passwordInput("rdrs-password", "password", "Password", signup ? "new-password" : "current-password")}
+        ${signup ? `
+          <div id="rdrs-password-strength" style="font-size:12px;color:#b8b8ce;margin:-4px 0 12px">Minimum 8 characters</div>
+          ${passwordInput("rdrs-confirm-password", "confirm_password", "Confirm password", "new-password")}
+        ` : ""}
+        <p id="rdrs-login-error" role="alert" style="min-height:20px;color:#ff8585;font-size:13px;margin:0 0 12px">${message}</p>
+        <button type="submit" style="width:100%;padding:12px;border:0;border-radius:8px;background:#8057e8;color:white;font-weight:600;cursor:pointer">${signup ? "Create account" : "Sign in"}</button>
+      </form>
+      <button type="button" id="rdrs-auth-switch" style="width:100%;margin-top:14px;padding:10px;background:transparent;color:#c6b5ff;border:1px solid #44445f;border-radius:8px;cursor:pointer">${signup ? "Already have an account? Sign in" : "New here? Create an account"}</button>
+      <p style="font-size:12px;color:#9292aa;margin:20px 0 0">Authorized local sandbox access only.</p>
+    </div>`;
+
   screen.style.display = "flex";
+  screen.querySelector("#rdrs-login-form").addEventListener("submit", handleRdrsLogin);
 
-  const error = screen.querySelector("#rdrs-login-error");
-  if (error) error.textContent = message;
+  screen.querySelector("#rdrs-auth-switch").addEventListener("click", () => {
+    showLoginScreen("", signup ? "login" : "signup");
+  });
 
-  screen.querySelector("#rdrs-username")?.focus();
+  screen.querySelectorAll("[data-toggle-password]").forEach(toggle => {
+    toggle.addEventListener("click", () => {
+      const input = screen.querySelector(`#${toggle.dataset.togglePassword}`);
+      if (!input) return;
+      const show = input.type === "password";
+      input.type = show ? "text" : "password";
+      toggle.textContent = show ? "Hide" : "Show";
+    });
+  });
+
+  const pass = screen.querySelector("#rdrs-password");
+  const strength = screen.querySelector("#rdrs-password-strength");
+  pass?.addEventListener("input", () => {
+    if (!strength) return;
+    const v = pass.value;
+    let score = 0;
+    if (v.length >= 8) score++;
+    if (v.length >= 12) score++;
+    if (/[a-z]/.test(v) && /[A-Z]/.test(v)) score++;
+    if (/\d/.test(v)) score++;
+    if (/[^A-Za-z0-9]/.test(v)) score++;
+    const levels = ["Weak", "Weak", "Fair", "Good", "Strong", "Strong"];
+    strength.textContent = v ? "Password strength: " + levels[score] : "Minimum 8 characters";
+    strength.style.color = score >= 4 ? "#75e0a2" : score >= 2 ? "#f0c36a" : "#ff8585";
+  });
+
+  screen.querySelector(signup ? "#rdrs-full-name" : "#rdrs-username")?.focus();
 }
-
 
 function hideLoginScreen() {
   document.getElementById("rdrs-login-screen")?.remove();
-
   const appShell = document.querySelector(".app-shell");
   if (appShell) appShell.style.display = "";
 }
 
-
 async function handleRdrsLogin(event) {
   event.preventDefault();
-
   const form = event.currentTarget;
   const button = form.querySelector("button[type='submit']");
   const error = document.getElementById("rdrs-login-error");
-
   const username = form.elements.username.value.trim();
   const password = form.elements.password.value;
+  const signup = rdrsAuthMode === "signup";
 
-  if (button) {
+  if (signup) {
+    const fullName = form.elements.full_name.value.trim();
+    const email = form.elements.email.value.trim();
+    const confirmPassword = form.elements.confirm_password.value;
+
+    if (password.length < 8) {
+      error.textContent = "Password must be at least 8 characters.";
+      return;
+    }
+    if (password !== confirmPassword) {
+      error.textContent = "Passwords do not match.";
+      return;
+    }
+    if (!/^[A-Za-z0-9_]{3,32}$/.test(username)) {
+      error.textContent = "Username must be 3–32 letters, numbers, or underscores.";
+      return;
+    }
+
     button.disabled = true;
-    button.textContent = "Signing in…";
+    button.textContent = "Creating account…";
+    error.textContent = "";
+
+    try {
+      const response = await fetch(`${API_BASE}/api/signup`, {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        credentials: "include",
+        body: JSON.stringify({
+          full_name: fullName,
+          username,
+          email,
+          password,
+          confirm_password: confirmPassword
+        })
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        showLoginScreen(data.detail || "Unable to create account.", "signup");
+        return;
+      }
+      showLoginScreen(data.message || "Account created. Please sign in.", "login");
+    } catch (err) {
+      console.error("RDRS signup error:", err);
+      showLoginScreen("Unable to reach the backend. Check your connection.", "signup");
+    } finally {
+      const currentButton = document.querySelector("#rdrs-login-form button[type='submit']");
+      if (currentButton) currentButton.disabled = false;
+    }
+    return;
   }
 
-  if (error) error.textContent = "";
+  button.disabled = true;
+  button.textContent = "Signing in…";
+  error.textContent = "";
 
   try {
     const response = await fetch(`${API_BASE}/api/login`, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json"
-      },
+      headers: {"Content-Type": "application/json"},
       credentials: "include",
-      body: JSON.stringify({
-        username,
-        password
-      })
+      body: JSON.stringify({username, password})
     });
-
     const data = await response.json().catch(() => ({}));
-
     if (!response.ok) {
-      const msg = data.detail || (
-        response.status === 503
-          ? "Authentication is not configured on the backend."
-          : "Invalid username or password."
-      );
-
-      showLoginScreen(msg);
+      showLoginScreen(data.detail || (response.status === 503 ? "Authentication is not configured on the backend." : "Invalid username or password."), "login");
       return;
     }
 
     rdrsAuthenticated = true;
-
     hideLoginScreen();
     form.reset();
-
     bindPageLinks();
     bindRefreshButton();
-
     renderPage("overview");
-
     showToast("Login successful.");
-
   } catch (err) {
     console.error("RDRS login error:", err);
-
-    showLoginScreen(
-      "Unable to reach the backend. Check that RDRS API is running."
-    );
-
+    showLoginScreen("Unable to reach the backend. Check that RDRS API is running.", "login");
   } finally {
-    const currentForm =
-      document.getElementById("rdrs-login-form");
-
-    const currentButton =
-      currentForm?.querySelector("button[type='submit']");
-
+    const currentButton = document.querySelector("#rdrs-login-form button[type='submit']");
     if (currentButton) {
       currentButton.disabled = false;
       currentButton.textContent = "Sign in";
     }
   }
 }
-
 
 async function rdrsLogout() {
   try {

@@ -10,6 +10,7 @@ from fastapi import APIRouter, HTTPException, Query, Request, Response
 
 from app.attribution.windows import WindowsProcessAttributionProvider
 from app.core.rdrs_service import RDRSService
+from app.database.users import users_db
 from app.core.auth import (
     create_session,
     set_session_cookie,
@@ -42,6 +43,14 @@ class IncidentUpdate(BaseModel):
 class LoginRequest(BaseModel):
     username: str = Field(min_length=1, max_length=128)
     password: str = Field(min_length=1, max_length=1024)
+
+
+class SignupRequest(BaseModel):
+    full_name: str = Field(min_length=2, max_length=100)
+    username: str = Field(min_length=3, max_length=32)
+    email: str = Field(min_length=5, max_length=254)
+    password: str = Field(min_length=8, max_length=1024)
+    confirm_password: str = Field(min_length=8, max_length=1024)
 
 def _parse_record_id(value):
     if value is None:
@@ -104,6 +113,57 @@ def parse_sysmon_event(xml_event: str):
     }
 
 
+
+@router.post("/signup")
+def signup(data: SignupRequest, request: Request):
+    check_origin(request)
+
+    full_name = data.full_name.strip()
+    username = data.username.strip().lower()
+    email = data.email.strip().lower()
+
+    if not full_name or len(full_name) < 2:
+        raise HTTPException(status_code=400, detail="Enter your full name.")
+
+    if not username.isascii() or not username.replace("_", "").isalnum():
+        raise HTTPException(
+            status_code=400,
+            detail="Username can contain letters, numbers, and underscores only.",
+        )
+
+    if len(username) < 3 or len(username) > 32:
+        raise HTTPException(status_code=400, detail="Username must be 3–32 characters.")
+
+    if "@" not in email or "." not in email.split("@")[-1]:
+        raise HTTPException(status_code=400, detail="Enter a valid email address.")
+
+    if data.password != data.confirm_password:
+        raise HTTPException(status_code=400, detail="Passwords do not match.")
+
+    if len(data.password) < 8:
+        raise HTTPException(status_code=400, detail="Password must be at least 8 characters.")
+
+    if username == os.getenv("RDRS_USERNAME", "").strip().lower():
+        raise HTTPException(status_code=409, detail="This username is unavailable.")
+
+    password_hash = users_db.hash_password(data.password)
+
+    try:
+        created = users_db.create_user(
+            full_name, username, email, password_hash
+        )
+    except Exception:
+        raise HTTPException(status_code=500, detail="Unable to create account.")
+
+    if not created:
+        raise HTTPException(
+            status_code=409,
+            detail="Username or email already registered.",
+        )
+
+    return {"message": "Account created successfully. You can now sign in."}
+
+
 @router.post("/login")
 def login(data: LoginRequest, request: Request, response: Response):
     check_origin(request)
@@ -116,24 +176,21 @@ def login(data: LoginRequest, request: Request, response: Response):
         )
 
     expected_username = os.getenv("RDRS_USERNAME", "")
-    password_hash = os.getenv("RDRS_PASSWORD_HASH", "")
+    admin_password_hash = os.getenv("RDRS_PASSWORD_HASH", "")
 
-    if not expected_username or not password_hash:
-        raise HTTPException(
-            status_code=503,
-            detail="Authentication is not configured",
-        )
-
-    username_valid = hmac.compare_digest(
-        data.username,
-        expected_username,
-    )
-    password_valid = verify_password(
-        data.password,
-        password_hash,
+    admin_valid = (
+        bool(expected_username and admin_password_hash)
+        and hmac.compare_digest(data.username, expected_username)
+        and verify_password(data.password, admin_password_hash)
     )
 
-    if not username_valid or not password_valid:
+    registered_user = users_db.get_user(data.username)
+    registered_valid = (
+        registered_user is not None
+        and verify_password(data.password, registered_user["password_hash"])
+    )
+
+    if not admin_valid and not registered_valid:
         record_login_failure(data.username)
         raise HTTPException(
             status_code=401,
