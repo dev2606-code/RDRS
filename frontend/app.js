@@ -4,7 +4,7 @@
 // RDRS - Ransomware Detection and Response System
 // Frontend JavaScript
 
-const API_BASE = "http://localhost:8000";
+const API_BASE = "";
 
 const content = document.getElementById("page-content");
 const toast = document.getElementById("toast");
