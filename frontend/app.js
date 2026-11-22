@@ -116,6 +116,7 @@ let rdrsAuthMode = "login";
 
 function showLoginScreen(message = "", mode = rdrsAuthMode) {
   rdrsAuthMode = mode;
+
   const appShell = document.querySelector(".app-shell");
   if (appShell) appShell.style.display = "none";
 
@@ -123,47 +124,97 @@ function showLoginScreen(message = "", mode = rdrsAuthMode) {
   if (!screen) {
     screen = document.createElement("section");
     screen.id = "rdrs-login-screen";
-    screen.style.cssText = "min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;background:#0b0b18;color:#f5f5ff;font-family:Inter,system-ui,sans-serif;";
     document.body.appendChild(screen);
   }
 
   const signup = mode === "signup";
-  const field = "box-sizing:border-box;width:100%;padding:12px;border:1px solid #44445f;border-radius:8px;background:#101021;color:white;margin-bottom:14px;";
-  const label = "display:block;margin-bottom:7px;font-size:14px;";
+
   const passwordInput = (id, name, text, autocomplete) => `
-    <label for="${id}" style="${label}">${text}</label>
-    <div style="position:relative;margin-bottom:14px">
-      <input id="${id}" name="${name}" type="password" autocomplete="${autocomplete}" required style="${field}margin:0;padding-right:75px">
-      <button type="button" data-toggle-password="${id}" style="position:absolute;right:8px;top:8px;padding:4px 8px;background:#292941;color:#cfc5ff;border:0;border-radius:5px;cursor:pointer">Show</button>
+    <div class="rdrs-auth-field">
+      <label for="${id}">${text}</label>
+      <div class="rdrs-password-wrap">
+        <input id="${id}" name="${name}" type="password"
+          autocomplete="${autocomplete}" required>
+        <button type="button" class="rdrs-password-toggle"
+          data-toggle-password="${id}">Show</button>
+      </div>
     </div>`;
 
   screen.innerHTML = `
-    <div style="width:100%;max-width:420px;background:#17172b;border:1px solid #343450;border-radius:16px;padding:32px;box-shadow:0 20px 60px rgba(0,0,0,.35)">
-      <div style="font-size:13px;letter-spacing:2px;color:#b9a0ff;margin-bottom:10px">RDRS · DEFENSIVE SECURITY</div>
-      <h1 style="margin:0 0 8px;font-size:28px">${signup ? "Create account" : "Sign in"}</h1>
-      <p style="margin:0 0 24px;color:#b8b8ce">${signup ? "Create an account for your security dashboard." : "Sign in to access your security dashboard."}</p>
-      <form id="rdrs-login-form">
-        ${signup ? `
-          <label for="rdrs-full-name" style="${label}">Full name</label>
-          <input id="rdrs-full-name" name="full_name" autocomplete="name" required minlength="2" style="${field}">
-          <label for="rdrs-email" style="${label}">Email</label>
-          <input id="rdrs-email" name="email" type="email" autocomplete="email" required style="${field}">
-        ` : ""}
-        <label for="rdrs-username" style="${label}">Username</label>
-        <input id="rdrs-username" name="username" autocomplete="username" required minlength="3" maxlength="32" style="${field}">
-        ${passwordInput("rdrs-password", "password", "Password", signup ? "new-password" : "current-password")}
-        ${signup ? `
-          <div id="rdrs-password-strength" style="font-size:12px;color:#b8b8ce;margin:-4px 0 12px">Minimum 8 characters</div>
-          ${passwordInput("rdrs-confirm-password", "confirm_password", "Confirm password", "new-password")}
-        ` : ""}
-        <p id="rdrs-login-error" role="alert" style="min-height:20px;color:#ff8585;font-size:13px;margin:0 0 12px">${message}</p>
-        <button type="submit" style="width:100%;padding:12px;border:0;border-radius:8px;background:#8057e8;color:white;font-weight:600;cursor:pointer">${signup ? "Create account" : "Sign in"}</button>
-      </form>
-      <button type="button" id="rdrs-auth-switch" style="width:100%;margin-top:14px;padding:10px;background:transparent;color:#c6b5ff;border:1px solid #44445f;border-radius:8px;cursor:pointer">${signup ? "Already have an account? Sign in" : "New here? Create an account"}</button>
-      <p style="font-size:12px;color:#9292aa;margin:20px 0 0">Authorized local sandbox access only.</p>
-    </div>`;
+    <div class="rdrs-auth-layout">
+      <aside class="rdrs-auth-hero">
+        <div class="rdrs-auth-brand">
+          <div class="rdrs-auth-logo">⬡</div>
+          <span>RDRS <small>DEFENSIVE SECURITY</small></span>
+        </div>
+
+        <div class="rdrs-auth-hero-content">
+          <div class="rdrs-auth-badge"><span></span> SECURITY OPERATIONS</div>
+          <h2>Protect. Detect.<br><span>Respond.</span></h2>
+          <p>Intelligent ransomware detection and sandbox-based security monitoring in one secure workspace.</p>
+          <div class="rdrs-auth-shield">
+            <div class="rdrs-shield-ring ring-one"></div>
+            <div class="rdrs-shield-ring ring-two"></div>
+            <div class="rdrs-shield-core">⬡</div>
+            <div class="rdrs-shield-caption">SANDBOX PROTECTED</div>
+          </div>
+        </div>
+
+        <div class="rdrs-auth-hero-footer">
+          <span>●</span> Defensive monitoring environment
+        </div>
+      </aside>
+
+      <main class="rdrs-auth-main">
+        <div class="rdrs-auth-card">
+          <div class="rdrs-auth-mobile-brand">⬡ RDRS <span>SECURITY</span></div>
+          <div class="rdrs-auth-topline">${signup ? "GET STARTED" : "WELCOME BACK"}</div>
+          <h1>${signup ? "Create your account" : "Welcome back"}</h1>
+          <p class="rdrs-auth-subtitle">${signup ? "Set up your account to access the security workspace." : "Sign in to continue to your security workspace."}</p>
+
+          <form id="rdrs-login-form">
+            ${signup ? `
+              <div class="rdrs-auth-field">
+                <label for="rdrs-full-name">Full name</label>
+                <input id="rdrs-full-name" name="full_name" autocomplete="name" required minlength="2">
+              </div>
+              <div class="rdrs-auth-field">
+                <label for="rdrs-email">Email address</label>
+                <input id="rdrs-email" name="email" type="email" autocomplete="email" required>
+              </div>
+            ` : ""}
+
+            <div class="rdrs-auth-field">
+              <label for="rdrs-username">Username</label>
+              <input id="rdrs-username" name="username" autocomplete="username" required minlength="3" maxlength="32">
+            </div>
+
+            ${passwordInput("rdrs-password", "password", "Password", signup ? "new-password" : "current-password")}
+
+            ${signup ? `
+              <div id="rdrs-password-strength" class="rdrs-password-strength">Minimum 8 characters</div>
+              ${passwordInput("rdrs-confirm-password", "confirm_password", "Confirm password", "new-password")}
+            ` : ""}
+
+            <p id="rdrs-login-error" role="alert" class="rdrs-auth-error">${message}</p>
+
+            <button type="submit" class="rdrs-auth-submit">${signup ? "Create account" : "Sign in"} <span>→</span></button>
+          </form>
+
+          <button type="button" id="rdrs-auth-switch" class="rdrs-auth-switch">
+            ${signup ? "Already have an account? Sign in" : "New here? Create an account"}
+          </button>
+
+          <div class="rdrs-auth-secure-note">
+            <span>◈</span> Authorized local sandbox access only
+          </div>
+        </div>
+      </main>
+    </div>
+  `;
 
   screen.style.display = "flex";
+
   screen.querySelector("#rdrs-login-form").addEventListener("submit", handleRdrsLogin);
 
   screen.querySelector("#rdrs-auth-switch").addEventListener("click", () => {
@@ -182,6 +233,7 @@ function showLoginScreen(message = "", mode = rdrsAuthMode) {
 
   const pass = screen.querySelector("#rdrs-password");
   const strength = screen.querySelector("#rdrs-password-strength");
+
   pass?.addEventListener("input", () => {
     if (!strength) return;
     const v = pass.value;
@@ -198,7 +250,6 @@ function showLoginScreen(message = "", mode = rdrsAuthMode) {
 
   screen.querySelector(signup ? "#rdrs-full-name" : "#rdrs-username")?.focus();
 }
-
 function hideLoginScreen() {
   document.getElementById("rdrs-login-screen")?.remove();
   const appShell = document.querySelector(".app-shell");
