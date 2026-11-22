@@ -1,6 +1,6 @@
 # RDRS — Ransomware Detection and Response System
 All project links
-- ???? Live website: rdrs.netlify.app
+- ???? Live website: https://rdrs.netlify.app
 - ⚙️ Backend API: rdrs-5c5r.onrender.com
 RDRS is a defensive, sandbox-focused ransomware detection and response system designed to monitor file activity, identify suspicious behavior, calculate risk scores, and manage security incidents.
 
